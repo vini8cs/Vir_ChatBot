@@ -1,8 +1,9 @@
+import json
+import logging
+
 from langchain.prompts import PromptTemplate
-from langchain_google_vertexai import VertexAI
-from langchain_google_vertexai import ChatVertexAI
-import json, logging
 from langchain_core.messages import HumanMessage
+from langchain_google_vertexai import ChatVertexAI, VertexAI
 
 
 class Gemini:
@@ -54,7 +55,9 @@ class Gemini:
         )
 
     def _generate_text_summaries(self, content):
-        import re, logging, json
+        import json
+        import logging
+        import re
 
         def clean_text(text):
             if text and len(text.split()) > 3:
@@ -90,7 +93,5 @@ class Gemini:
             json.loads(response.content)
             return response.content
         except json.JSONDecodeError:
-            logging.error(
-                f"Failed to decode JSON from model response: {response.content}"
-            )
+            logging.error(f"Failed to decode JSON from model response: {response.content}")
             return None
