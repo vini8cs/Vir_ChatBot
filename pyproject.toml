@@ -6,8 +6,13 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "google==3.0.0",
+    "langchain==0.3.27",
+    "langchain-community>=0.3.28",
     "langchain-core==0.3.74",
+    "langchain-google-genai==2.1.9",
+    "langchain-google-vertexai==2.0.28",
     "pydantic-settings==2.11.0",
+    "timescale-vector==0.0.7",
     "unstructured[pdf]==0.18.15",
 ]
 

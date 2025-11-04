@@ -1,8 +1,10 @@
 import json
 import logging
+import re
 
 from langchain.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_vertexai import ChatVertexAI, VertexAI
 
 
@@ -16,6 +18,7 @@ class Gemini:
         max_retries=None,
         prompt_text=None,
         prompt_image=None,
+        gemini_embedding_model="gemini-embedding-001",
     ):
         self.gemini_model = gemini_model
         self.temperature = temperature
@@ -27,11 +30,22 @@ class Gemini:
         self.prompt = None
         self.summarize_chain_text = None
         self.summarize_chain_image = None
+        self.gemini_embedding_model = gemini_embedding_model
+        self.embeddings = GoogleGenerativeAIEmbeddings(model=self.gemini_embedding_model)
         if prompt_text:
             self.prompt = PromptTemplate.from_template(prompt_text)
             self._create_sumarized_chain_text()
         if prompt_image:
             self._create_sumarized_chain_image()
+
+    @staticmethod
+    def test_json_validity(response: str) -> bool:
+        try:
+            json.loads(response)
+            return response
+        except json.JSONDecodeError as e:
+            logging.info(f"JSON decode error: {e}. Retrying...")
+            return None
 
     def _create_sumarized_chain_text(self):
 
@@ -55,10 +69,6 @@ class Gemini:
         )
 
     def _generate_text_summaries(self, content):
-        import json
-        import logging
-        import re
-
         def clean_text(text):
             if text and len(text.split()) > 3:
                 return re.sub(r"\u2022", "", text).strip()
@@ -67,14 +77,10 @@ class Gemini:
         content = clean_text(content)
         if not content or content == "":
             return None
-        try:
-            logging.info(f"Generating summary for text {content[0:10]}...")
-            response = self.summarize_chain_text.invoke({"element": content})
-            json.loads(response)
-            return response
-        except json.JSONDecodeError as e:
-            logging.info(f"JSON decode error: {e}. Retrying...")
-            return None
+        logging.info(f"Generating summary for text {content[0:10]}...")
+        response = self.summarize_chain_text.invoke({"element": content})
+
+        self.test_json_validity(response)
 
     def _genenate_image_summaries(self, content):
         image_message = {
@@ -89,9 +95,4 @@ class Gemini:
         response = self.summarize_chain_image.invoke([message])
         if not response.content or response.content.strip() == "":
             return None
-        try:
-            json.loads(response.content)
-            return response.content
-        except json.JSONDecodeError:
-            logging.error(f"Failed to decode JSON from model response: {response.content}")
-            return None
+        self.test_json_validity(response.content)

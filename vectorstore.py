@@ -17,6 +17,7 @@ from datetime import datetime
 # from summarize_pdf_vertexai import summarize_pdfs_vertexai
 # from langsmith import Client
 import pandas as pd
+from langchain_community.vectorstores import FAISS
 
 # import logging
 # from unstructured_client.models import operations, shared
@@ -33,21 +34,10 @@ from unstructured.documents.elements import CompositeElement, Image, Table
 # from os.path import join
 from unstructured.partition.pdf import partition_pdf
 
-from config import (
-    CHUNK_SIZE,
-    COMBINE_TEXT_UNDER_N_CHARS,
-    EMBEDDING_MODEL,
-    GEMINI_MODEL,
-    LANGUAGES,
-    MAX_OUTPUT_TOKENS,
-    MAX_RETRIES,
-    NEW_AFTER_N_CHARACTERS,
-    PROMPT_IMAGE,
-    PROMPT_TEXT,
-    RESPONSE_SCHEMA,
-    TEMPERATURE,
-)
+import config as _
 from gemini import Gemini
+from prompts import PROMPT_IMAGE, PROMPT_TEXT
+from schemas import RESPONSE_SCHEMA
 
 # from unstructured_client import UnstructuredClient
 
@@ -77,15 +67,16 @@ class VectorStoreCreator(Gemini):
         pdf_folder: str,
         output_folder: str,
         cache: str,
-        gemini_model: str = GEMINI_MODEL,
-        embedding_model: str = EMBEDDING_MODEL,
-        temperature: float = TEMPERATURE,
-        max_output_tokens: int = MAX_OUTPUT_TOKENS,
-        chunk_size: int = CHUNK_SIZE,
-        combine_text_under_n_chars: int = COMBINE_TEXT_UNDER_N_CHARS,
-        new_after_n_characters: int = NEW_AFTER_N_CHARACTERS,
-        languages: list[str] = LANGUAGES,
-        max_retries: int = MAX_RETRIES,
+        vectorstore_path: str,
+        gemini_model: str = _.GEMINI_MODEL,
+        embedding_model: str = _.EMBEDDING_MODEL,
+        temperature: float = _.TEMPERATURE,
+        max_output_tokens: int = _.MAX_OUTPUT_TOKENS,
+        chunk_size: int = _.CHUNK_SIZE,
+        combine_text_under_n_chars: int = _.COMBINE_TEXT_UNDER_N_CHARS,
+        new_after_n_characters: int = _.NEW_AFTER_N_CHARACTERS,
+        languages: list[str] = _.LANGUAGES,
+        max_retries: int = _.MAX_RETRIES,
     ):
         super().__init__(
             gemini_model=gemini_model,
@@ -95,6 +86,7 @@ class VectorStoreCreator(Gemini):
             max_retries=max_retries,
             prompt_text=PROMPT_TEXT,
             prompt_image=PROMPT_IMAGE,
+            gemini_embedding_model=embedding_model,
         )
         self.pdf_folder = pdf_folder
         self.output_folder = output_folder
@@ -104,6 +96,7 @@ class VectorStoreCreator(Gemini):
         self.new_after_n_characters = new_after_n_characters
         self.languages = languages
         self.cache = cache
+        self.vectorstore_path = vectorstore_path
 
     def _save_cache(self):
         self.merged_df.to_csv(self.cache, index=False)
@@ -113,7 +106,7 @@ class VectorStoreCreator(Gemini):
 
     def _find_pdf(self):
         self.pdf_paths = []
-        for root, _, files in os.walk(self.pdf_folder):
+        for root, _loop, files in os.walk(self.pdf_folder):
             for f in files:
                 if f.lower().endswith(".pdf"):
                     full_path = os.path.join(root, f)
@@ -202,33 +195,70 @@ class VectorStoreCreator(Gemini):
         def update_metadata_and_summary(df):
             return df.apply(process_row, axis=1)
 
-        texts_df_list = []
-        tables_df_list = []
-        images_df_list = []
+        def process_df(df, content="text"):
+            df["summarized_content"] = df["contents"].apply(
+                self._generate_text_summaries if content == "text" else self._genenate_image_summaries
+            )
+            df = update_metadata_and_summary(df)
+            return df.dropna(subset=["summarized_content"])
 
         self._find_pdf()
+
+        dfs = {
+            "text": [],
+            "table": [],
+            "image": [],
+        }
+
         for pdf_path in self.pdf_paths:
             chunks = self._pdf_chunking_process(pdf_path)
             tables_df, texts_df, images_df = separate_data(chunks)
 
-            texts_df["summarized_content"] = texts_df["contents"].apply(self._generate_text_summaries)
-            tables_df["summarized_content"] = tables_df["contents"].apply(self._generate_text_summaries)
-            images_df["summarized_content"] = images_df["contents"].apply(self._genenate_image_summaries)
+            for name, df in [
+                ("text", texts_df),
+                ("table", tables_df),
+                ("image", images_df),
+            ]:
+                if df.empty:
+                    continue
+                df = process_df(df, content="image") if name == "image" else process_df(df)
 
-            texts_df = update_metadata_and_summary(texts_df)
-            tables_df = update_metadata_and_summary(tables_df)
-            images_df = update_metadata_and_summary(images_df)
+        self.texts_all_df = pd.concat(dfs["text"], ignore_index=True) if dfs["text"] else None
+        self.tables_all_df = pd.concat(dfs["table"], ignore_index=True) if dfs["table"] else None
+        self.images_all_df = pd.concat(dfs["image"], ignore_index=True) if dfs["image"] else None
 
-            texts_df = texts_df.dropna(subset=["summarized_content"])
-            tables_df = tables_df.dropna(subset=["summarized_content"])
-            images_df = images_df.dropna(subset=["summarized_content"])
+        self.merged_df = pd.concat(
+            [d for d in [self.texts_all_df, self.tables_all_df, self.images_all_df] if d is not None],
+            ignore_index=True,
+        )
 
-            texts_df_list.append(texts_df)
-            tables_df_list.append(tables_df)
-            images_df_list.append(images_df)
+    def _check_vectorstore_exists(self):
+        return os.path.exists(self.vectorstore_path) and os.listdir(self.vectorstore_path)
 
-        self.texts_all_df = pd.concat(texts_df_list, ignore_index=True)
-        self.tables_all_df = pd.concat(tables_df_list, ignore_index=True)
-        self.images_all_df = pd.concat(images_df_list, ignore_index=True)
+    def _load_faiss_vectorstore(self):
+        self.vectorstore = FAISS.load_local(
+            self.vectorstore_path,
+            self.embeddings,
+            allow_dangerous_deserialization=True,
+        )
 
-        self.merged_df = pd.concat([self.texts_all_df, self.tables_all_df, self.images_all_df], ignore_index=True)
+    def _create_faiss_vectorstore(self):
+        texts = self.merged_df["summary"].tolist()
+        metadatas = self.merged_df["metadata"].apply(json.loads).tolist()
+        ids = self.merged_df["id"].tolist()
+
+        self.vectorstore = FAISS.from_texts(
+            texts,
+            self.embeddings,
+            metadatas=metadatas,
+            ids=ids,
+        )
+
+        self.vectorstore.save_local(self.vectorstore_path)
+
+    def create_vectorstore(self):
+        self._chunking_pdfs()
+        if not self._check_vectorstore_exists():
+            self._create_faiss_vectorstore()
+        else:
+            self._load_faiss_vectorstore()

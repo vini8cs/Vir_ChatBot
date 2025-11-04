@@ -1,10 +1,13 @@
 import argparse
 
+from vectorstore import VectorStoreCreator
+
 # import config
 
 
 def menu():
     parser = argparse.ArgumentParser(description="VirChatBot Command Line Interface")
+    parser.add_argument("--vectorstore_path", type=str, default="vectorstore", help="Path to the vectorstore folder")
     parser.add_argument("--pdf_folder", type=str, required=True, help="Path to the folder containing PDF files")
     parser.add_argument("--temp_folder", type=str, default="temp_folder", help="Path to the temporary folder")
     parser.add_argument("--gemini_model", type=str, default="gemini-2.5-flash", help="Gemini model to use")
@@ -27,8 +30,23 @@ def menu():
 
 
 def main():
-    pass
-    # args = menu()
+    args = menu()
+    vectorstore = VectorStoreCreator(
+        vectorstore_path=args.vectorstore_path,
+        pdf_folder=args.pdf_folder,
+        output_folder=args.temp_folder,
+        cache="vectorstore_cache.csv",
+        gemini_model=args.gemini_model,
+        embedding_model=args.embedding_model,
+        temperature=args.temperature,
+        max_output_tokens=args.max_output_tokens,
+        chunk_size=args.chunk_size,
+        combine_text_under_n_chars=args.combine_text_under_n_chars,
+        new_after_n_characters=args.new_after_n_characters,
+        languages=args.languages,
+    )
+
+    vectorstore._chunking_pdfs()
 
 
 if __name__ == "__main__":
