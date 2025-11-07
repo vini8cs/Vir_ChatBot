@@ -15,6 +15,7 @@ def menu():
     parser.add_argument("--temperature", type=float, default=0.1, help="Temperature for the ai model")
     parser.add_argument("--max_output_tokens", type=int, default=2048, help="Max output tokens for the ai model")
     parser.add_argument("--chunk_size", type=int, default=4000, help="Chunk size for chunking PDFs with Unstructured")
+    parser.add_argument("--cache", type=str, default="vectorstore_cache.csv", help="Path to the cache CSV")
     parser.add_argument(
         "--combine_text_under_n_chars",
         type=int,
@@ -35,7 +36,7 @@ def main():
         vectorstore_path=args.vectorstore_path,
         pdf_folder=args.pdf_folder,
         output_folder=args.temp_folder,
-        cache="vectorstore_cache.csv",
+        cache=args.cache,
         gemini_model=args.gemini_model,
         embedding_model=args.embedding_model,
         temperature=args.temperature,
@@ -46,7 +47,7 @@ def main():
         languages=args.languages,
     )
 
-    vectorstore._chunking_pdfs()
+    vectorstore.create_vectorstore()
 
 
 if __name__ == "__main__":

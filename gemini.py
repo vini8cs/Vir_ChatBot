@@ -79,8 +79,7 @@ class Gemini:
             return None
         logging.info(f"Generating summary for text {content[0:10]}...")
         response = self.summarize_chain_text.invoke({"element": content})
-
-        self.test_json_validity(response)
+        return self.test_json_validity(response)
 
     def _genenate_image_summaries(self, content):
         image_message = {
@@ -95,4 +94,4 @@ class Gemini:
         response = self.summarize_chain_image.invoke([message])
         if not response.content or response.content.strip() == "":
             return None
-        self.test_json_validity(response.content)
+        return self.test_json_validity(response.content)
