@@ -1,8 +1,14 @@
 import logging
 import os
+import warnings
 
 from google import genai
 from pydantic_settings import BaseSettings
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", force=True)
+
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.cloud.aiplatform")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="unstructured")
 
 
 class GeminiConnectionError(ConnectionError):
@@ -42,11 +48,6 @@ try:
     CLIENT_GEMINI = genai.Client()
 except Exception as e:
     raise GeminiConnectionError(f"Error initializing Gemini client: {e}")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 
 GEMINI_MODEL = "gemini-2.5-flash"
 EMBEDDING_MODEL = "gemini-embedding-001"

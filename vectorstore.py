@@ -99,13 +99,14 @@ class VectorStoreCreator(Gemini):
         self.vectorstore_path = vectorstore_path
         self.pdf_list = []
         self.cache_df = pd.DataFrame()
+        self.merged_df = None
 
     def _save_cache(self):
         logging.info(f"Saving cache to {self.cache}...")
         self.merged_df.to_csv(self.cache, index=False)
 
     def _load_cache(self):
-        logging.info(f"Loading cache from {self.cache}...")
+        logging.info(f"Loading {self.cache}...")
         self.cache_df = pd.read_csv(self.cache)
         self.cache_df["metadata"] = self.cache_df["metadata"].apply(json.loads)
 
@@ -118,11 +119,13 @@ class VectorStoreCreator(Gemini):
         )
 
     def _check_chache(self):
+        logging.info(f"Checking if cache exists {self.cache}...")
         if os.path.exists(self.cache):
             return True
         return False
 
     def _find_pdf(self):
+        logging.info("Searching for PDF files...")
         self.pdf_paths = []
         for root, _loop, files in os.walk(self.pdf_folder):
             for f in files:
@@ -202,16 +205,19 @@ class VectorStoreCreator(Gemini):
             flat = pd.json_normalize(df["summarized_content"]).reset_index(drop=True)
             df = df.reset_index(drop=True)
             df = df.join(flat)
-            df["metadata"] = df.apply(lambda r: {**json.loads(r["metadata"]), "isReference": r["isReference"]}, axis=1)
+            df["metadata"] = df.apply(
+                lambda r: json.dumps({**json.loads(r["metadata"]), "isReference": r["isReference"]}), axis=1
+            )
             return df.drop(columns=["isReference"])
 
         def process_df(df, content="text"):
-            df["summarized_content"] = df["contents"].apply(
+            processed_df = df.copy()
+            processed_df["summarized_content"] = processed_df["contents"].apply(
                 self._generate_text_summaries if content == "text" else self._genenate_image_summaries
             )
-            df = df.dropna(subset=["summarized_content"])
-            df["summarized_content"] = df["summarized_content"].apply(lambda x: json.loads(x)[0])
-            return update_metadata_and_summary(df)
+            processed_df = processed_df.dropna(subset=["summarized_content"])
+            processed_df["summarized_content"] = processed_df["summarized_content"].apply(lambda x: json.loads(x)[0])
+            return update_metadata_and_summary(processed_df)
 
         self._find_pdf()
 
@@ -221,6 +227,7 @@ class VectorStoreCreator(Gemini):
             "image": [],
         }
 
+        logging.info("Starting PDF chunking process...")
         for pdf_path in self.pdf_paths:
             if pdf_path in self.pdf_list:
                 continue
@@ -235,8 +242,10 @@ class VectorStoreCreator(Gemini):
                 ("image", images_df),
             ]:
                 if df.empty:
+                    logging.warning(f"Dataframe extracted with {name} type for {pdf_path} is empty. Continuing...")
                     continue
 
+                logging.info(f"Processing {name} dataframe for {pdf_path}...")
                 df = process_df(df, content="image") if name == "image" else process_df(df)
                 PROCESSED_DFS[name].append(df)
 
@@ -244,18 +253,29 @@ class VectorStoreCreator(Gemini):
         self.tables_all_df = pd.concat(PROCESSED_DFS["table"], ignore_index=True) if PROCESSED_DFS["table"] else None
         self.images_all_df = pd.concat(PROCESSED_DFS["image"], ignore_index=True) if PROCESSED_DFS["image"] else None
 
-        self.merged_df = pd.concat(
-            [d for d in [self.texts_all_df, self.tables_all_df, self.images_all_df] if d is not None],
-            ignore_index=True,
-        )
+        dfs_to_merge = [d for d in [self.texts_all_df, self.tables_all_df, self.images_all_df] if d is not None]
 
-        if not self.cache_df.empty:
-            self.merged_df = pd.concat([self.cache_df, self.merged_df], ignore_index=True)
+        if len(dfs_to_merge) != 0:
+
+            self.merged_df = pd.concat(
+                dfs_to_merge,
+                ignore_index=True,
+            )
+
+            if not self.cache_df.empty:
+                logging.info("Merging new pdf(s) with cache")
+                self.merged_df = pd.concat([self.cache_df, self.merged_df], ignore_index=True)
+
+            self._save_cache()
+        else:
+            logging.info("No new pdf was added to the vectorstore cache...")
 
     def _check_vectorstore_exists(self):
+        logging.info("Checking if vectorstore exist...")
         return os.path.exists(self.vectorstore_path) and os.listdir(self.vectorstore_path)
 
     def _load_faiss_vectorstore(self):
+        logging.info("Loading vectorstore...")
         self.vectorstore = FAISS.load_local(
             self.vectorstore_path,
             self.embeddings,
@@ -263,6 +283,7 @@ class VectorStoreCreator(Gemini):
         )
 
     def _create_faiss_vectorstore(self):
+        logging.info("Creating vectorstore with faiss...")
         texts = self.merged_df["summary"].tolist()
         metadatas = self.merged_df["metadata"].tolist()
         ids = self.merged_df["id"].tolist()
@@ -279,9 +300,15 @@ class VectorStoreCreator(Gemini):
     def create_vectorstore(self):
         if self._check_chache():
             self._load_cache()
+
         self._chunking_pdfs()
-        self._save_cache()
-        if not self._check_vectorstore_exists():
-            self._create_faiss_vectorstore()
-        else:
+
+        if self._check_vectorstore_exists():
             self._load_faiss_vectorstore()
+            return
+
+        if not self.merged_df:
+            return
+
+        self._create_faiss_vectorstore()
+        self._load_faiss_vectorstore()

@@ -44,7 +44,7 @@ class Gemini:
             json.loads(response)
             return response
         except json.JSONDecodeError as e:
-            logging.info(f"JSON decode error: {e}. Retrying...")
+            logging.warning(f"JSON decode error: {e}. Retrying...")
             return None
 
     def _create_sumarized_chain_text(self):
