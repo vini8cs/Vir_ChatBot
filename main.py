@@ -7,6 +7,19 @@ from vectorstore import VectorStoreCreator
 
 def menu():
     parser = argparse.ArgumentParser(description="VirChatBot Command Line Interface")
+
+    parser.add_argument(
+        "--build_vectorstore",
+        action="store_true",
+        help="Rebuild the vectorstore from all PDFs in the folder and overwrite cache",
+    )
+
+    parser.add_argument(
+        "--add_pdfs",
+        action="store_true",
+        help="Add new PDFs (not present in cache) to the existing vectorstore",
+    )
+
     parser.add_argument("--vectorstore_path", type=str, default="vectorstore", help="Path to the vectorstore folder")
     parser.add_argument("--pdf_folder", type=str, required=True, help="Path to the folder containing PDF files")
     parser.add_argument("--temp_folder", type=str, default="temp_folder", help="Path to the temporary folder")
@@ -16,16 +29,23 @@ def menu():
     parser.add_argument("--max_output_tokens", type=int, default=2048, help="Max output tokens for the ai model")
     parser.add_argument("--chunk_size", type=int, default=4000, help="Chunk size for chunking PDFs with Unstructured")
     parser.add_argument("--cache", type=str, default="vectorstore_cache.csv", help="Path to the cache CSV")
+
     parser.add_argument(
         "--combine_text_under_n_chars",
         type=int,
         default=1500,
         help="Combine text elements under this number of characters",
     )
+
     parser.add_argument(
-        "--new_after_n_characters", type=int, default=3000, help="Start a new chunk after this number of characters"
+        "--new_after_n_characters",
+        type=int,
+        default=3000,
+        help="Start a new chunk after this number of characters",
     )
+
     parser.add_argument("--languages", type=str, nargs="+", default=["eng", "pt"], help="Languages for OCR processing")
+
     args = parser.parse_args()
     return args
 
@@ -47,7 +67,10 @@ def main():
         languages=args.languages,
     )
 
-    vectorstore.create_vectorstore()
+    if args.build_vectorstore:
+        vectorstore.build_vectorstore_from_folder()
+    elif args.add_pdfs:
+        vectorstore.add_from_folder()
 
 
 if __name__ == "__main__":

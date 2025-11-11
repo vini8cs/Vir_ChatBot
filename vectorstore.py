@@ -97,32 +97,32 @@ class VectorStoreCreator(Gemini):
         self.languages = languages
         self.cache = cache
         self.vectorstore_path = vectorstore_path
-        self.pdf_list = []
-        self.cache_df = pd.DataFrame()
-        self.merged_df = None
 
     def _save_cache(self):
-        logging.info(f"Saving cache to {self.cache}...")
-        self.merged_df.to_csv(self.cache, index=False)
+        file_exists = os.path.exists(self.cache)
+        self.merged_df.to_csv(self.cache, mode="a", index=False, header=not file_exists)
 
     def _load_cache(self):
         logging.info(f"Loading {self.cache}...")
         self.cache_df = pd.read_csv(self.cache)
         self.cache_df["metadata"] = self.cache_df["metadata"].apply(json.loads)
 
-        self.pdf_list.extend(
-            [
-                os.path.join(row["metadata"].get("file_directory", ""), row["metadata"].get("filename", ""))
-                for _, row in self.cache_df.iterrows()
-                if "metadata" in row and row["metadata"]
-            ]
-        )
+        self.pdf_list = set(self.cache_df["metadata"].apply(lambda x: os.path.join(x["file_directory"], x["filename"])))
 
     def _check_chache(self):
         logging.info(f"Checking if cache exists {self.cache}...")
         if os.path.exists(self.cache):
             return True
         return False
+
+    def _diff_vs_cache(self):
+        print("testing pdf cache")
+        print(self.pdf_list)
+        pdf_path_set = set(self.pdf_paths)
+        print(pdf_path_set)
+        self.pdf_paths = list(pdf_path_set - self.pdf_list)
+        if len(self.pdf_paths) == 0:
+            raise ValueError("No new PDF was found...")
 
     def _find_pdf(self):
         logging.info("Searching for PDF files...")
@@ -219,8 +219,6 @@ class VectorStoreCreator(Gemini):
             processed_df["summarized_content"] = processed_df["summarized_content"].apply(lambda x: json.loads(x)[0])
             return update_metadata_and_summary(processed_df)
 
-        self._find_pdf()
-
         PROCESSED_DFS = {
             "text": [],
             "table": [],
@@ -229,8 +227,6 @@ class VectorStoreCreator(Gemini):
 
         logging.info("Starting PDF chunking process...")
         for pdf_path in self.pdf_paths:
-            if pdf_path in self.pdf_list:
-                continue
             chunks = self._pdf_chunking_process(pdf_path)
             logging.info(f"Chunked {pdf_path} into {len(chunks)} chunks.")
             tables_df, texts_df, images_df = separate_data(chunks)
@@ -249,26 +245,16 @@ class VectorStoreCreator(Gemini):
                 df = process_df(df, content="image") if name == "image" else process_df(df)
                 PROCESSED_DFS[name].append(df)
 
-        self.texts_all_df = pd.concat(PROCESSED_DFS["text"], ignore_index=True) if PROCESSED_DFS["text"] else None
-        self.tables_all_df = pd.concat(PROCESSED_DFS["table"], ignore_index=True) if PROCESSED_DFS["table"] else None
-        self.images_all_df = pd.concat(PROCESSED_DFS["image"], ignore_index=True) if PROCESSED_DFS["image"] else None
+        texts_all_df = pd.concat(PROCESSED_DFS["text"], ignore_index=True) if PROCESSED_DFS["text"] else None
+        tables_all_df = pd.concat(PROCESSED_DFS["table"], ignore_index=True) if PROCESSED_DFS["table"] else None
+        images_all_df = pd.concat(PROCESSED_DFS["image"], ignore_index=True) if PROCESSED_DFS["image"] else None
 
-        dfs_to_merge = [d for d in [self.texts_all_df, self.tables_all_df, self.images_all_df] if d is not None]
+        dfs_to_merge = [d for d in [texts_all_df, tables_all_df, images_all_df] if d is not None]
 
-        if len(dfs_to_merge) != 0:
-
-            self.merged_df = pd.concat(
-                dfs_to_merge,
-                ignore_index=True,
-            )
-
-            if not self.cache_df.empty:
-                logging.info("Merging new pdf(s) with cache")
-                self.merged_df = pd.concat([self.cache_df, self.merged_df], ignore_index=True)
-
-            self._save_cache()
-        else:
-            logging.info("No new pdf was added to the vectorstore cache...")
+        self.merged_df = pd.concat(
+            dfs_to_merge,
+            ignore_index=True,
+        )
 
     def _check_vectorstore_exists(self):
         logging.info("Checking if vectorstore exist...")
@@ -282,33 +268,50 @@ class VectorStoreCreator(Gemini):
             allow_dangerous_deserialization=True,
         )
 
-    def _create_faiss_vectorstore(self):
+    def _processing_faiss_vectorstore_data(self):
         logging.info("Creating vectorstore with faiss...")
-        texts = self.merged_df["summary"].tolist()
-        metadatas = self.merged_df["metadata"].tolist()
-        ids = self.merged_df["id"].tolist()
 
-        self.vectorstore = FAISS.from_texts(
-            texts,
+        self.texts_for_vectorstore = self.merged_df["summary"].tolist()
+        self.metadatas_for_vectorstore = [
+            json.loads(m) if isinstance(m, str) else m for m in self.merged_df["metadata"]
+        ]
+        self.ids_for_vectorstore = self.merged_df["id"].tolist()
+
+    def _adding_chunks_to_vectorstore(self):
+        logging.info("Adding chunks to vectorstore...")
+        self.vectorstore.from_texts(
+            self.texts_for_vectorstore,
             self.embeddings,
-            metadatas=metadatas,
-            ids=ids,
+            metadatas=self.metadatas_for_vectorstore,
+            ids=self.ids_for_vectorstore,
         )
 
+    def _save_faiss_vectorstore(self):
+        logging.info("Saving vectorstore...")
+        self.vectorstore = FAISS.from_texts(
+            self.texts_for_vectorstore,
+            self.embeddings,
+            metadatas=self.metadatas_for_vectorstore,
+            ids=self.ids_for_vectorstore,
+        )
         self.vectorstore.save_local(self.vectorstore_path)
 
-    def create_vectorstore(self):
-        if self._check_chache():
-            self._load_cache()
-
+    def build_vectorstore_from_folder(self):
+        logging.info("Bulding a new vectorstore from zero...")
+        self._find_pdf()
         self._chunking_pdfs()
+        self._processing_faiss_vectorstore_data()
+        self._save_faiss_vectorstore()
+        self._save_cache()
 
-        if self._check_vectorstore_exists():
-            self._load_faiss_vectorstore()
-            return
-
-        if not self.merged_df:
-            return
-
-        self._create_faiss_vectorstore()
+    def add_from_folder(self):
+        self._find_pdf()
+        if not self._check_chache():
+            raise ValueError("No cache found. Try creating the vectorstor first!")
+        self._load_cache()
+        self._diff_vs_cache()
+        self._chunking_pdfs()
         self._load_faiss_vectorstore()
+        self._processing_faiss_vectorstore_data()
+        self._adding_chunks_to_vectorstore()
+        self._save_cache()
