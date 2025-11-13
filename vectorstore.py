@@ -17,6 +17,8 @@ from datetime import datetime
 # from summarize_pdf_vertexai import summarize_pdfs_vertexai
 # from langsmith import Client
 import pandas as pd
+from docling.chunking import HybridChunker
+from docling.document_converter import DocumentConverter
 from langchain_community.vectorstores import FAISS
 
 # import logging
@@ -38,6 +40,7 @@ import config as _
 from gemini import Gemini
 from prompts import PROMPT_IMAGE, PROMPT_TEXT
 from schemas import RESPONSE_SCHEMA
+from tokenizer import TokenizerWrapper
 
 # from unstructured_client import UnstructuredClient
 
@@ -72,11 +75,10 @@ class VectorStoreCreator(Gemini):
         embedding_model: str = _.EMBEDDING_MODEL,
         temperature: float = _.TEMPERATURE,
         max_output_tokens: int = _.MAX_OUTPUT_TOKENS,
-        chunk_size: int = _.CHUNK_SIZE,
-        combine_text_under_n_chars: int = _.COMBINE_TEXT_UNDER_N_CHARS,
-        new_after_n_characters: int = _.NEW_AFTER_N_CHARACTERS,
+        token_size: int = _.TOKEN_SIZE,
         languages: list[str] = _.LANGUAGES,
         max_retries: int = _.MAX_RETRIES,
+        tokenizer_model: str = _.TOKENIZER_MODEL,
     ):
         super().__init__(
             gemini_model=gemini_model,
@@ -91,12 +93,17 @@ class VectorStoreCreator(Gemini):
         self.pdf_folder = pdf_folder
         self.output_folder = output_folder
         self.embedding_model = embedding_model
-        self.chunk_size = chunk_size
-        self.combine_text_under_n_chars = combine_text_under_n_chars
-        self.new_after_n_characters = new_after_n_characters
+        self.token_size = token_size
         self.languages = languages
         self.cache = cache
         self.vectorstore_path = vectorstore_path
+        self.tokenizer_tool = TokenizerWrapper(model_name=tokenizer_model, max_length=8191)
+        self.chunker = HybridChunker(
+            tokenizer=self.tokenizer_tool,
+            max_tokens=self.token_size,
+            merge_peers=True,
+        )
+        self.converter = DocumentConverter()
 
     def _save_cache(self):
         file_exists = os.path.exists(self.cache)
@@ -132,6 +139,37 @@ class VectorStoreCreator(Gemini):
                 if f.lower().endswith(".pdf"):
                     full_path = os.path.join(root, f)
                     self.pdf_paths.append(full_path)
+
+    def _chunking_documents_with_docling(self):
+        def process_chunk(chunks, directory):
+            return [
+                {
+                    "text": chunk.text,
+                    "metadata": json.dumps(
+                        {
+                            "filename": os.path.join(directory, chunk.meta.origin.filename),
+                            "page_numbers": [
+                                page_no
+                                for page_no in sorted(
+                                    set(prov.page_no for item in chunk.meta.doc_items for prov in item.prov)
+                                )
+                            ]
+                            or None,
+                            "title": (chunk.meta.headings[0] if chunk.meta.headings else None),
+                        }
+                    ),
+                }
+                for chunk in chunks
+            ]
+
+        documents_chunks = []
+        for pdf_path in self.pdf_paths:
+            result = self.converter.convert(source=pdf_path)
+            chunk_iter = self.chunker.chunk(dl_doc=result.document)
+            chunks = list(chunk_iter)
+            documents_chunks.extend(process_chunk(chunks, os.path.dirname(pdf_path)))
+
+        self._document_chunks = pd.DataFrame(documents_chunks)
 
     def _pdf_chunking_process(self, pdf_path):
         return partition_pdf(
@@ -206,7 +244,8 @@ class VectorStoreCreator(Gemini):
             df = df.reset_index(drop=True)
             df = df.join(flat)
             df["metadata"] = df.apply(
-                lambda r: json.dumps({**json.loads(r["metadata"]), "isReference": r["isReference"]}), axis=1
+                lambda r: json.dumps({**json.loads(r["metadata"]), "isReference": r["isReference"]}),
+                axis=1,
             )
             return df.drop(columns=["isReference"])
 
@@ -299,10 +338,11 @@ class VectorStoreCreator(Gemini):
     def build_vectorstore_from_folder(self):
         logging.info("Bulding a new vectorstore from zero...")
         self._find_pdf()
-        self._chunking_pdfs()
-        self._processing_faiss_vectorstore_data()
-        self._save_faiss_vectorstore()
-        self._save_cache()
+        self._chunking_documents_with_docling()
+        # self._chunking_pdfs()
+        # self._processing_faiss_vectorstore_data()
+        # self._save_faiss_vectorstore()
+        # self._save_cache()
 
     def add_from_folder(self):
         self._find_pdf()
