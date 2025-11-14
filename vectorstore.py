@@ -18,7 +18,7 @@ from datetime import datetime
 # from langsmith import Client
 import pandas as pd
 from docling.chunking import HybridChunker
-from docling.document_converter import DocumentConverter
+from docling.document_converter import DocumentConverter, PdfFormatOption
 from langchain_community.vectorstores import FAISS
 
 # import logging
@@ -41,6 +41,8 @@ from gemini import Gemini
 from prompts import PROMPT_IMAGE, PROMPT_TEXT
 from schemas import RESPONSE_SCHEMA
 from tokenizer import TokenizerWrapper
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.base_models import InputFormat
 
 # from unstructured_client import UnstructuredClient
 
@@ -97,13 +99,21 @@ class VectorStoreCreator(Gemini):
         self.languages = languages
         self.cache = cache
         self.vectorstore_path = vectorstore_path
-        self.tokenizer_tool = TokenizerWrapper(model_name=tokenizer_model, max_length=8191)
+        self.tokenizer_tool = TokenizerWrapper(
+            model_name=tokenizer_model, max_length=8191
+        )
         self.chunker = HybridChunker(
             tokenizer=self.tokenizer_tool,
             max_tokens=self.token_size,
             merge_peers=True,
         )
-        self.converter = DocumentConverter()
+        pipeline_options = PdfPipelineOptions(generate_picture_images=True)
+        pipeline_options.enable_remote_services = True
+        self.converter = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+            }
+        )
 
     def _save_cache(self):
         file_exists = os.path.exists(self.cache)
@@ -114,7 +124,11 @@ class VectorStoreCreator(Gemini):
         self.cache_df = pd.read_csv(self.cache)
         self.cache_df["metadata"] = self.cache_df["metadata"].apply(json.loads)
 
-        self.pdf_list = set(self.cache_df["metadata"].apply(lambda x: os.path.join(x["file_directory"], x["filename"])))
+        self.pdf_list = set(
+            self.cache_df["metadata"].apply(
+                lambda x: os.path.join(x["file_directory"], x["filename"])
+            )
+        )
 
     def _check_chache(self):
         logging.info(f"Checking if cache exists {self.cache}...")
@@ -141,163 +155,105 @@ class VectorStoreCreator(Gemini):
                     self.pdf_paths.append(full_path)
 
     def _chunking_documents_with_docling(self):
-        def process_chunk(chunks, directory):
+        def extract_text_from_chunk(chunks, directory):
             return [
                 {
-                    "text": chunk.text,
+                    "id": str(uuid_from_time(datetime.now())),
+                    "contents": chunk.text,
                     "metadata": json.dumps(
                         {
-                            "filename": os.path.join(directory, chunk.meta.origin.filename),
+                            "filename": os.path.join(
+                                directory, chunk.meta.origin.filename
+                            ),
                             "page_numbers": [
                                 page_no
                                 for page_no in sorted(
-                                    set(prov.page_no for item in chunk.meta.doc_items for prov in item.prov)
+                                    set(
+                                        prov.page_no
+                                        for item in chunk.meta.doc_items
+                                        for prov in item.prov
+                                    )
                                 )
                             ]
                             or None,
-                            "title": (chunk.meta.headings[0] if chunk.meta.headings else None),
+                            "title": (
+                                chunk.meta.headings[0] if chunk.meta.headings else None
+                            ),
                         }
                     ),
                 }
                 for chunk in chunks
             ]
 
-        documents_chunks = []
+        def extract_image_from_chunk(picture, filename):
+            image_uri = str(
+                picture.image.get("uri")
+                if isinstance(picture.image, dict)
+                else getattr(picture.image, "uri", None)
+            )
+
+            if image_uri.startswith("data:") and "base64," in image_uri:
+                image_uri = image_uri.split("base64,")[-1]
+
+            page_numbers = (
+                sorted({prov.page_no for prov in getattr(picture, "prov", [])}) or None
+            )
+
+            return {
+                "id": str(uuid_from_time(datetime.now())),
+                "contents": image_uri,
+                "metadata": json.dumps(
+                    {
+                        "filename": filename,
+                        "page_numbers": page_numbers,
+                        "title": None,
+                    }
+                ),
+            }
+
+        image_chunks = []
+        text_chunks = []
         for pdf_path in self.pdf_paths:
             result = self.converter.convert(source=pdf_path)
             chunk_iter = self.chunker.chunk(dl_doc=result.document)
             chunks = list(chunk_iter)
-            documents_chunks.extend(process_chunk(chunks, os.path.dirname(pdf_path)))
+            text_chunks.extend(extract_text_from_chunk(chunks, os.path.dirname(pdf_path)))
+            for picture in result.document.pictures:
+                image_chunks.append(extract_image_from_chunk(picture, pdf_path))
 
-        self._document_chunks = pd.DataFrame(documents_chunks)
+        self.text_chunks_df = pd.DataFrame(image_chunks)
+        self.image_chunks_df = pd.DataFrame(text_chunks)
 
-    def _pdf_chunking_process(self, pdf_path):
-        return partition_pdf(
-            filename=pdf_path,
-            infer_table_structure=True,
-            strategy="hi_res",
-            languages=self.languages,
-            extract_image_block_types=["Image", "Table"],
-            extract_image_block_to_payload=True,
-            chunking_strategy="by_title",
-            max_characters=self.chunk_size,
-            combine_text_under_n_chars=self.combine_text_under_n_chars,
-            new_after_n_characters=self.new_after_n_characters,
-        )
-
-    def _chunking_pdfs(self):
-        def separate_data(chunks):
-            tables_data = []
-            texts_data = []
-            images_data = []
-
-            for chunk in chunks:
-                if isinstance(chunk, Table):
-                    tables_data.append(
-                        {
-                            "id": str(uuid_from_time(datetime.now())),
-                            "metadata": json.dumps(chunk.metadata.to_dict()),
-                            "contents": chunk.text,
-                        }
-                    )
-
-                elif isinstance(chunk, CompositeElement):
-                    texts_data.append(
-                        {
-                            "id": str(uuid_from_time(datetime.now())),
-                            "contents": chunk.text,
-                            "metadata": json.dumps(chunk.metadata.to_dict()),
-                        }
-                    )
-                    if hasattr(chunk.metadata, "orig_elements"):
-                        for element in chunk.metadata.orig_elements:
-                            if isinstance(element, Image):
-                                images_data.append(
-                                    {
-                                        "id": str(uuid_from_time(datetime.now())),
-                                        "contents": element.metadata.image_base64,
-                                        "metadata": json.dumps(chunk.metadata.to_dict()),
-                                    }
-                                )
-
-                elif isinstance(chunk, Image):
-                    images_data.append(
-                        {
-                            "id": str(uuid_from_time(datetime.now())),
-                            "metadata": json.dumps(chunk.metadata.to_dict()),
-                            "contents": chunk.metadata.image_base64,
-                        }
-                    )
-
-            logging.info(
-                f"Separated {len(tables_data)} tables, {len(texts_data)} texts, and {len(images_data)} images."
-            )
-
-            tables_df = pd.DataFrame(tables_data)
-            texts_df = pd.DataFrame(texts_data)
-            images_df = pd.DataFrame(images_data)
-
-            return tables_df, texts_df, images_df
-
+    def _summarize_df(self, df, content="text"):
         def update_metadata_and_summary(df):
             flat = pd.json_normalize(df["summarized_content"]).reset_index(drop=True)
             df = df.reset_index(drop=True)
             df = df.join(flat)
             df["metadata"] = df.apply(
-                lambda r: json.dumps({**json.loads(r["metadata"]), "isReference": r["isReference"]}),
+                lambda r: json.dumps(
+                    {**json.loads(r["metadata"]), "isReference": r["isReference"]}
+                ),
                 axis=1,
             )
             return df.drop(columns=["isReference"])
 
-        def process_df(df, content="text"):
-            processed_df = df.copy()
-            processed_df["summarized_content"] = processed_df["contents"].apply(
-                self._generate_text_summaries if content == "text" else self._genenate_image_summaries
-            )
-            processed_df = processed_df.dropna(subset=["summarized_content"])
-            processed_df["summarized_content"] = processed_df["summarized_content"].apply(lambda x: json.loads(x)[0])
-            return update_metadata_and_summary(processed_df)
-
-        PROCESSED_DFS = {
-            "text": [],
-            "table": [],
-            "image": [],
-        }
-
-        logging.info("Starting PDF chunking process...")
-        for pdf_path in self.pdf_paths:
-            chunks = self._pdf_chunking_process(pdf_path)
-            logging.info(f"Chunked {pdf_path} into {len(chunks)} chunks.")
-            tables_df, texts_df, images_df = separate_data(chunks)
-
-            print(f"tables_df: {tables_df.shape}, texts_df: {texts_df.shape}, images_df: {images_df.shape}")
-            for name, df in [
-                ("text", texts_df),
-                ("table", tables_df),
-                ("image", images_df),
-            ]:
-                if df.empty:
-                    logging.warning(f"Dataframe extracted with {name} type for {pdf_path} is empty. Continuing...")
-                    continue
-
-                logging.info(f"Processing {name} dataframe for {pdf_path}...")
-                df = process_df(df, content="image") if name == "image" else process_df(df)
-                PROCESSED_DFS[name].append(df)
-
-        texts_all_df = pd.concat(PROCESSED_DFS["text"], ignore_index=True) if PROCESSED_DFS["text"] else None
-        tables_all_df = pd.concat(PROCESSED_DFS["table"], ignore_index=True) if PROCESSED_DFS["table"] else None
-        images_all_df = pd.concat(PROCESSED_DFS["image"], ignore_index=True) if PROCESSED_DFS["image"] else None
-
-        dfs_to_merge = [d for d in [texts_all_df, tables_all_df, images_all_df] if d is not None]
-
-        self.merged_df = pd.concat(
-            dfs_to_merge,
-            ignore_index=True,
+        processed_df = df.copy()
+        processed_df["summarized_content"] = processed_df["contents"].apply(
+            self._generate_text_summaries
+            if content == "text"
+            else self._genenate_image_summaries
         )
+        processed_df = processed_df.dropna(subset=["summarized_content"])
+        processed_df["summarized_content"] = processed_df["summarized_content"].apply(
+            lambda x: json.loads(x)[0]
+        )
+        return update_metadata_and_summary(processed_df)
 
     def _check_vectorstore_exists(self):
         logging.info("Checking if vectorstore exist...")
-        return os.path.exists(self.vectorstore_path) and os.listdir(self.vectorstore_path)
+        return os.path.exists(self.vectorstore_path) and os.listdir(
+            self.vectorstore_path
+        )
 
     def _load_faiss_vectorstore(self):
         logging.info("Loading vectorstore...")
@@ -312,7 +268,8 @@ class VectorStoreCreator(Gemini):
 
         self.texts_for_vectorstore = self.merged_df["summary"].tolist()
         self.metadatas_for_vectorstore = [
-            json.loads(m) if isinstance(m, str) else m for m in self.merged_df["metadata"]
+            json.loads(m) if isinstance(m, str) else m
+            for m in self.merged_df["metadata"]
         ]
         self.ids_for_vectorstore = self.merged_df["id"].tolist()
 
@@ -339,10 +296,14 @@ class VectorStoreCreator(Gemini):
         logging.info("Bulding a new vectorstore from zero...")
         self._find_pdf()
         self._chunking_documents_with_docling()
-        # self._chunking_pdfs()
-        # self._processing_faiss_vectorstore_data()
-        # self._save_faiss_vectorstore()
-        # self._save_cache()
+        self.text_processed = self._summarize_df(self.text_chunks_df, content="text")
+        self.image_processed = self._summarize_df(self.image_chunks_df, content="image")
+        self.merged_df = pd.concat([self.text_processed, self.image_processed]).reset_index(
+            drop=True
+        )
+        self._processing_faiss_vectorstore_data()
+        self._save_faiss_vectorstore()
+        self._save_cache()
 
     def add_from_folder(self):
         self._find_pdf()
