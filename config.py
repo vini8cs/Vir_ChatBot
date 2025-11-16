@@ -57,3 +57,6 @@ TOKEN_SIZE = 2048
 LANGUAGES = ["eng", "pt"]
 MAX_RETRIES = 3
 TOKENIZER_MODEL = "mistralai/Mistral-7B-v0.1"
+THREADS = 4
+DONT_SUMMARIZE = False
+PDF_TO_DELETE = []

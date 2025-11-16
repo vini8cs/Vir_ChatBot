@@ -2,7 +2,7 @@ from docling_core.transforms.chunker.tokenizer.base import BaseTokenizer
 from transformers import AutoTokenizer
 
 
-class  TokenizerWrapper(BaseTokenizer):
+class TokenizerWrapper(BaseTokenizer):
     """
     Hugging Face tokenizer wrapper compatible with Docling HybridChunker.
     """
