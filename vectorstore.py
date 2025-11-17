@@ -89,8 +89,20 @@ class VectorStoreCreator(Gemini):
 
     def _save_cache(self):
         logging.info(f"Saving cache to {self.cache}...")
+        chache_to_save = self.filtered_df.copy()
+        chache_to_save["metadata"] = chache_to_save["metadata"].apply(
+            lambda x: json.dumps(x) if not isinstance(x, str) else x
+        )
         file_exists = os.path.exists(self.cache)
-        self.filtered_df.to_csv(self.cache, mode="a", index=False, header=not file_exists)
+        chache_to_save.to_csv(self.cache, mode="a", index=False, header=not file_exists)
+
+    def _reformat_chache_after_deletion(self):
+        logging.info("Reformatting cache after deletions...")
+        chache_to_save = self.filtered_df.copy()
+        chache_to_save["metadata"] = chache_to_save["metadata"].apply(
+            lambda x: json.dumps(x) if not isinstance(x, str) else x
+        )
+        self.filtered_df.to_csv(self.cache, index=False)
 
     def _load_cache(self):
         logging.info(f"Loading {self.cache}...")
@@ -119,8 +131,11 @@ class VectorStoreCreator(Gemini):
         ]
         if self.cache_to_delete.empty:
             raise NoCacheFoundError("No matching PDFs found in cache to delete.")
-        self.merged_df = self.cache_df[~self.cache_df["metadata"].apply(lambda x: x["filename"] in self.pdf_to_delete)]
-        self.uudis_to_remove = self.cache_to_delete["id"].tolist()
+
+        self.uudis_to_remove = self.cache_to_delete["id"].unique().tolist()
+        self.filtered_df = self.cache_df[~self.cache_df["id"].isin(self.uudis_to_remove)].reset_index(drop=True)
+
+        logging.info(f"Found {len(self.uudis_to_remove)} UUIDs to delete from vectorstore")
 
     def delete_uuids_from_vectorstore(self):
         logging.info("Deleting UUIDs from vectorstore...")
@@ -191,6 +206,9 @@ class VectorStoreCreator(Gemini):
 
         self.text_chunks_df = pd.DataFrame(text_chunks)
         self.image_chunks_df = pd.DataFrame(image_chunks)
+
+        logging.info(f"Text chunks: {len(self.text_chunks_df)}")
+        logging.info(f"Image chunks: {len(self.image_chunks_df)}")
 
     def _summarize_df(self, df, content="text"):
         def update_metadata_and_summary(df):
@@ -307,4 +325,4 @@ class VectorStoreCreator(Gemini):
         self.recover_deleted_pdfs_from_cache()
         self._load_faiss_vectorstore()
         self.delete_uuids_from_vectorstore()
-        self._save_cache()
+        self._reformat_chache_after_deletion()
