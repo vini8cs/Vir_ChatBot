@@ -1,6 +1,6 @@
 import argparse
 
-from vectorstore import VectorStoreCreator
+from agents.vir_chatbot.vectorstore import VectorStoreCreator
 
 # import config
 

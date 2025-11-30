@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = ""
 
     UNSTRUCTURED_API: str = ""
+    VECTORSTORE_PATH: str = ""
+    SQLITE_MEMORY_DATABASE: str = "memory.sqlite"
 
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -60,7 +62,8 @@ TOKENIZER_MODEL = "mistralai/Mistral-7B-v0.1"
 THREADS = 4
 DONT_SUMMARIZE = False
 PDF_TO_DELETE = []
-SQLITE_MEMORY_DATABASE = "memory.sqlite"
+SQLITE_MEMORY_DATABASE = settings.SQLITE_MEMORY_DATABASE
+VECTORSTORE_PATH = settings.VECTORSTORE_PATH
 RETRIEVER_LIMIT = 5
 THREAD_NUMBER = 1
 USER_ID = 1

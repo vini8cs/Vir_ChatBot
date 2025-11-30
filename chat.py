@@ -11,7 +11,7 @@ import config as _
 from langgraph_functions import make_retrieve_tool, query_or_respond
 
 
-class Chat:
+class Vir_ChatBot:
     def __init__(
         self,
         vectorstore_path,
@@ -69,7 +69,6 @@ class Chat:
         async with AsyncSqliteSaver.from_conn_string(self.sqlite_memory_database) as checkpointer:
 
             graph = self.create_graph(checkpointer)
-
             self.config = {"configurable": {"thread_id": self.thread, "user_id": self.user_id}}
 
             while True:
