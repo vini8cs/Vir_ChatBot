@@ -1,3 +1,4 @@
+import logging
 import os
 
 from celery import Celery
@@ -18,10 +19,10 @@ def create_vectorstore_uploaded_pdfs(pdfs_to_add: list[str]):
         vector_store_creator.add_from_folder()
         return {
             "status": "Sucesso",
-            "message": f"VectorStore criado ou atualizado.",
+            "message": "VectorStore criado ou atualizado.",
         }
     except Exception as e:
-        print(f"Erro na tarefa Celery: {e}")
+        logging.info(f"Erro na tarefa Celery: {e}")
         return {"status": "Falha", "error": str(e)}
     finally:
         for file_temp in pdfs_to_add:
