@@ -26,13 +26,22 @@ class NoCacheFoundError(Exception):
     """Custom exception for no cache found."""
 
 
+class NoVectorStoreFoundError(Exception):
+    """Custom exception for no vectorstore found."""
+
+
+class VectorAlreadyCreatedError(Exception):
+    """Custom exception for vectorstore already created."""
+
+
 class VectorStoreCreator(Gemini):
     def __init__(
         self,
-        pdf_folder: str,
-        output_folder: str,
-        cache: str,
-        vectorstore_path: str,
+        pdfs_to_delete: list[str] = _.PDF_LIST_DEFAULT,
+        pdfs_to_add: list[str] = _.PDF_LIST_DEFAULT,
+        pdf_folder: str = _.PDF_FOLDER,
+        cache: str = _.CACHE_FILE,
+        vectorstore_path: str = _.VECTORSTORE_PATH,
         gemini_model: str = _.GEMINI_MODEL,
         embedding_model: str = _.EMBEDDING_MODEL,
         temperature: float = _.TEMPERATURE,
@@ -41,7 +50,6 @@ class VectorStoreCreator(Gemini):
         languages: list[str] = _.LANGUAGES,
         max_retries: int = _.MAX_RETRIES,
         tokenizer_model: str = _.TOKENIZER_MODEL,
-        pdfs_to_delete: list[str] = _.PDF_TO_DELETE,
         threads: int = _.THREADS,
         dont_summarize: bool = _.DONT_SUMMARIZE,
     ):
@@ -56,7 +64,6 @@ class VectorStoreCreator(Gemini):
             gemini_embedding_model=embedding_model,
         )
         self.pdf_folder = pdf_folder
-        self.output_folder = output_folder
         self.embedding_model = embedding_model
         self.token_size = token_size
         self.languages = languages
@@ -70,6 +77,9 @@ class VectorStoreCreator(Gemini):
 
         if pdfs_to_delete:
             self.pdf_to_delete = pdfs_to_delete
+
+        if pdfs_to_add:
+            self.pdfs_to_add = pdfs_to_add
 
     def _start_docling_config(self):
         logging.info("Starting docling configuration...")
@@ -285,12 +295,11 @@ class VectorStoreCreator(Gemini):
         )
         self.vectorstore.save_local(self.vectorstore_path)
 
-    def build_vectorstore_from_folder(self):
-        logging.info("Bulding a new vectorstore from zero...")
+    def build_vectorstore_from_zero(self):
+        logging.info("Bulding vectorstore from zero...")
         self._find_pdf()
-        if self._check_chache():
-            self._load_cache()
-            self._diff_vs_cache()
+        if self._check_chache() or self._check_vectorstore_exists():
+            raise VectorAlreadyCreatedError("Vectorstore already created.")
         self._chunking_documents_with_docling()
         self._summarization_process()
         if not self.dont_summarize:
@@ -302,20 +311,24 @@ class VectorStoreCreator(Gemini):
         self._save_cache()
 
     def add_from_folder(self):
-        self._find_pdf()
-        if not self._check_chache():
-            raise NoCacheFoundError("No cache found. Try creating the vectorstor first!")
-        self._load_cache()
-        self._diff_vs_cache()
+        logging.info("Building or adding new PDFs to vectorstore...")
+        self.pdf_paths = self.pdfs_to_add.copy()
+        if self._check_chache():
+            self._load_cache()
+            self._diff_vs_cache()
         self._chunking_documents_with_docling()
         self._summarization_process()
         if not self.dont_summarize:
             self._filter_reference_info()
         else:
             self.filtered_df = self.merged_df.copy()
-        self._load_faiss_vectorstore()
         self._processing_faiss_vectorstore_data()
-        self._adding_chunks_to_vectorstore()
+
+        if self._check_vectorstore_exists():
+            self._load_faiss_vectorstore()
+            self._adding_chunks_to_vectorstore()
+        else:
+            self._save_faiss_vectorstore()
         self._save_cache()
 
     def delete_pdfs(self):
@@ -323,6 +336,9 @@ class VectorStoreCreator(Gemini):
             raise NoCacheFoundError("No cache found. Try creating the vectorstor first!")
         self._load_cache()
         self.recover_deleted_pdfs_from_cache()
-        self._load_faiss_vectorstore()
+        if self._check_vectorstore_exists():
+            self._load_faiss_vectorstore()
+        else:
+            raise NoVectorStoreFoundError("No vectorstore found. Try creating the vectorstor first!")
         self.delete_uuids_from_vectorstore()
         self._reformat_chache_after_deletion()

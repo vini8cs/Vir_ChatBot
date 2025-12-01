@@ -1,0 +1,52 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env-docker
+    volumes:
+      - ${VECTORSTORE_PATH}:${VECTORSTORE_PATH}
+      - ${GCP_CREDENTIALS}:${GCP_CREDENTIALS}
+      - ${SQLITE_MEMORY_DATABASE}:${SQLITE_MEMORY_DATABASE}
+      - ${CACHE_FILE_PATH}:${CACHE_FILE_PATH}
+      - /tmp/temp_uploads:/tmp/temp_uploads
+    depends_on:
+      - redis
+      - worker
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /app
+          ignore:
+            - .venv/
+        - action: rebuild
+          path: ./pyproject.toml
+        - action: rebuild
+          path: ./Dockerfile
+
+  worker:
+    build: .
+    command: celery -A tasks worker -l info
+    depends_on:
+      - redis
+    env_file:
+      - .env-docker
+    volumes:
+      - ${VECTORSTORE_PATH}:${VECTORSTORE_PATH}
+      - ${GCP_CREDENTIALS}:${GCP_CREDENTIALS}
+      - ${SQLITE_MEMORY_DATABASE}:${SQLITE_MEMORY_DATABASE}
+      - ${CACHE_FILE_PATH}:${CACHE_FILE_PATH}
+      - /tmp/temp_uploads:/tmp/temp_uploads
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+  
+  redis-commander:
+    image: rediscommander/redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"

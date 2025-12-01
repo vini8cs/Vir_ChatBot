@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     GCP_CREDENTIALS: str
     GCP_PROJECT: str
     GCP_REGION: str
-    TIMESCALE_SERVICE_URL: str
 
     LANGSMITH_API_KEY: str = ""
     LANGSMITH_TRACING_V2: str = "true"
@@ -28,8 +27,10 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = ""
 
     UNSTRUCTURED_API: str = ""
-    VECTORSTORE_PATH: str = ""
+    PDF_FOLDER: str = "PDFs"
+    VECTORSTORE_PATH: str = "vectorstore"
     SQLITE_MEMORY_DATABASE: str = "memory.sqlite"
+    CACHE_FILE_PATH: str = "cache.csv"
 
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -60,10 +61,12 @@ LANGUAGES = ["eng", "pt"]
 MAX_RETRIES = 3
 TOKENIZER_MODEL = "mistralai/Mistral-7B-v0.1"
 THREADS = 4
-DONT_SUMMARIZE = False
-PDF_TO_DELETE = []
+DONT_SUMMARIZE = True
 SQLITE_MEMORY_DATABASE = settings.SQLITE_MEMORY_DATABASE
 VECTORSTORE_PATH = settings.VECTORSTORE_PATH
+CACHE_FILE = settings.CACHE_FILE_PATH
+PDF_FOLDER = settings.PDF_FOLDER
 RETRIEVER_LIMIT = 5
 THREAD_NUMBER = 1
 USER_ID = 1
+PDF_LIST_DEFAULT = []
