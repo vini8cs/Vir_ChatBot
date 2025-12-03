@@ -40,7 +40,7 @@ class VectorStoreCreator(Gemini):
         pdfs_to_delete: list[str] = _.PDF_LIST_DEFAULT,
         pdfs_to_add: list[str] = _.PDF_LIST_DEFAULT,
         pdf_folder: str = _.PDF_FOLDER,
-        cache: str = _.CACHE_FILE,
+        cache: str = _.CACHE_FOLDER,
         vectorstore_path: str = _.VECTORSTORE_PATH,
         gemini_model: str = _.GEMINI_MODEL,
         embedding_model: str = _.EMBEDDING_MODEL,
@@ -67,7 +67,7 @@ class VectorStoreCreator(Gemini):
         self.embedding_model = embedding_model
         self.token_size = token_size
         self.languages = languages
-        self.cache = cache
+        self.cache = os.path.join(cache, "cache.csv")
         self.vectorstore_path = vectorstore_path
         self.tokenizer_model = tokenizer_model
         self.threads = threads

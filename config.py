@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     PDF_FOLDER: str = "PDFs"
     VECTORSTORE_PATH: str = "vectorstore"
     SQLITE_MEMORY_DATABASE: str = "memory.sqlite"
-    CACHE_FILE_PATH: str = "cache.csv"
+    CACHE_FOLDER_PATH: str = "cache.csv"
 
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -64,7 +64,7 @@ THREADS = 4
 DONT_SUMMARIZE = True
 SQLITE_MEMORY_DATABASE = settings.SQLITE_MEMORY_DATABASE
 VECTORSTORE_PATH = settings.VECTORSTORE_PATH
-CACHE_FILE = settings.CACHE_FILE_PATH
+CACHE_FOLDER = settings.CACHE_FOLDER_PATH
 PDF_FOLDER = settings.PDF_FOLDER
 RETRIEVER_LIMIT = 5
 THREAD_NUMBER = 1
