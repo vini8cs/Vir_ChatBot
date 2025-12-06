@@ -10,12 +10,14 @@ services:
       - ${PDF_FOLDER}:/app/pdfs/
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
+      - ${SQLITE_MEMORY_DATABASE}:/app/sqlite_memory.db
       - /tmp/temp_uploads:/tmp/temp_uploads
     environment:
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
+      - SQLITE_MEMORY_DATABASE=/app/sqlite_memory.db
     depends_on:
       - redis
       - worker
@@ -43,12 +45,14 @@ services:
       - ${PDF_FOLDER}:/app/pdfs/
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
+      - ${SQLITE_MEMORY_DATABASE}:/app/sqlite_memory.db
       - /tmp/temp_uploads:/tmp/temp_uploads
     environment:
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
+      - SQLITE_MEMORY_DATABASE=/app/sqlite_memory.db
   redis:
     image: redis:7
     ports:

@@ -3274,6 +3274,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-toon"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/92/640c83ca46d5fe9c49895449a8932f55252537dd13dd22186cbac3a1ce59/python_toon-0.1.3.tar.gz", hash = "sha256:ca348b214c4f1cdad3579fd83dd60032d9eb87eb349c2d430ad9eb6371f174bf", size = 31280 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/a4/2f2def0378b44f913d2d6cb3bc5b1a15267b363937ab1cb9afb07ce2313c/python_toon-0.1.3-py3-none-any.whl", hash = "sha256:a27b0ee4a729e730d1037d0a63eb8b344b3e5a26e3dc9a173067b6c31a868ee6", size = 21797 },
+]
+
+[[package]]
 name = "pytz"
 version = "2025.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4304,6 +4313,7 @@ dependencies = [
     { name = "pip" },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
+    { name = "python-toon" },
     { name = "redis" },
     { name = "streamlit" },
     { name = "uvicorn", extra = ["standard"] },
@@ -4327,6 +4337,7 @@ dev = [
     { name = "pip" },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
+    { name = "python-toon" },
     { name = "streamlit" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -4352,6 +4363,7 @@ requires-dist = [
     { name = "pip", specifier = "==25.3" },
     { name = "pydantic-settings", specifier = "==2.11.0" },
     { name = "python-multipart", specifier = "==0.0.20" },
+    { name = "python-toon", specifier = "==0.1.3" },
     { name = "redis", specifier = "==6.4.0" },
     { name = "streamlit", specifier = "==1.51.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.38.0" },
@@ -4375,6 +4387,7 @@ dev = [
     { name = "pip", specifier = "==25.3" },
     { name = "pydantic-settings", specifier = "==2.11.0" },
     { name = "python-multipart", specifier = "==0.0.20" },
+    { name = "python-toon", specifier = "==0.1.3" },
     { name = "streamlit", specifier = "==1.51.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.38.0" },
 ]

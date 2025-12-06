@@ -14,38 +14,22 @@ from langgraph_functions import make_retrieve_tool, query_or_respond
 class Vir_ChatBot:
     def __init__(
         self,
-        vectorstore_path,
+        retriever,
         llm_model,
-        embedding_model,
-        limit,
         temperature,
         max_retries,
         thread_id,
         user_id,
         checkpointer,
     ):
-        self.vectorstore_path = vectorstore_path
+        self.retriever = retriever
         self.checkpointer = checkpointer
-        self.embeddings = GoogleGenerativeAIEmbeddings(model=embedding_model)
         self.llm = ChatGoogleGenerativeAI(model=llm_model, temperature=temperature, max_retries=max_retries)
-        self.limit = limit
         self.thread_id = thread_id
         self.user_id = user_id
         self.graph = None
-        self.vectorstore = None
-        self.retriever = None
-
-    async def load_vectorstore(self):
-        self.vectorstore = await asyncio.to_thread(
-            FAISS.load_local,
-            self.vectorstore_path,
-            self.embeddings,
-            allow_dangerous_deserialization=True,
-        )
-        self.retriever = self.vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": self.limit})
 
     async def build_graph(self):
-        await self.load_vectorstore()
         builder = StateGraph(MessagesState)
 
         retrieve_tool = make_retrieve_tool(self.retriever)
@@ -69,14 +53,24 @@ class Vir_ChatBot:
         return builder.compile(checkpointer=self.checkpointer)
 
 
-async def create_graph(config):
-    checkpointer = AsyncSqliteSaver.from_conn_string(_.SQLITE_MEMORY_DATABASE)
+async def load_global_vectorstore():
+    embeddings = GoogleGenerativeAIEmbeddings(model=_.EMBEDDING_MODEL)
+    vectorstore = await asyncio.to_thread(
+        FAISS.load_local,
+        _.VECTORSTORE_PATH,
+        embeddings,
+        allow_dangerous_deserialization=True,
+    )
+    return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": _.RETRIEVER_LIMIT})
+
+
+async def create_graph(config, global_retriever):
+    checkpointer_cm = AsyncSqliteSaver.from_conn_string(_.SQLITE_MEMORY_DATABASE)
+    checkpointer = await checkpointer_cm.__aenter__()
 
     bot = Vir_ChatBot(
-        vectorstore_path=_.VECTORSTORE_PATH,
+        retriever=global_retriever,
         llm_model=_.GEMINI_MODEL,
-        embedding_model=_.EMBEDDING_MODEL,
-        limit=_.RETRIEVER_LIMIT,
         temperature=_.TEMPERATURE,
         max_retries=_.MAX_RETRIES,
         thread_id=config["configurable"].get("thread_id", _.THREAD_NUMBER),
@@ -84,4 +78,6 @@ async def create_graph(config):
         checkpointer=checkpointer,
     )
 
-    return await bot.build_graph()
+    graph = await bot.build_graph()
+    graph._checkpointer_cm = checkpointer_cm
+    return graph
