@@ -165,6 +165,42 @@ async def get_user_threads(user_id: str):
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
+@app.delete("/threads/{user_id}/{thread_id}")
+async def delete_thread(user_id: str, thread_id: str):
+    sqlite_db_path = _.SQLITE_MEMORY_DATABASE
+
+    if not os.path.exists(sqlite_db_path):
+        raise HTTPException(status_code=404, detail="Database not found")
+
+    try:
+        with sqlite3.connect(sqlite_db_path) as conn:
+            cur = conn.cursor()
+
+            query = """
+            SELECT COUNT(*) FROM checkpoints 
+            WHERE thread_id = ? 
+            AND json_extract(CAST(metadata AS TEXT), '$.user_id') = ?
+            """  # noqa: W291
+            cur.execute(query, (str(thread_id), str(user_id)))
+            count = cur.fetchone()[0]
+
+            if count == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Thread {thread_id} not found for user {user_id}",
+                )
+
+            cur.execute("DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),))
+            cur.execute("DELETE FROM writes WHERE thread_id = ?", (str(thread_id),))
+            conn.commit()
+
+            return {"message": f"Thread {thread_id} deleted successfully"}
+
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
 async def chat_generator(user_input: str, thread_id: str, user_id: str):
     """
     Gera a resposta em streaming e garante o fechamento da conexão do banco.
