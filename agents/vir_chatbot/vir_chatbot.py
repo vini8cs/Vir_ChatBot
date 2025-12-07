@@ -18,15 +18,11 @@ class Vir_ChatBot:
         llm_model,
         temperature,
         max_retries,
-        thread_id,
-        user_id,
         checkpointer,
     ):
         self.retriever = retriever
         self.checkpointer = checkpointer
         self.llm = ChatGoogleGenerativeAI(model=llm_model, temperature=temperature, max_retries=max_retries)
-        self.thread_id = thread_id
-        self.user_id = user_id
         self.graph = None
 
     async def build_graph(self):
@@ -64,7 +60,7 @@ async def load_global_vectorstore():
     return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": _.RETRIEVER_LIMIT})
 
 
-async def create_graph(config, global_retriever):
+async def create_graph(global_retriever):
     checkpointer_cm = AsyncSqliteSaver.from_conn_string(_.SQLITE_MEMORY_DATABASE)
     checkpointer = await checkpointer_cm.__aenter__()
 
@@ -73,11 +69,8 @@ async def create_graph(config, global_retriever):
         llm_model=_.GEMINI_MODEL,
         temperature=_.TEMPERATURE,
         max_retries=_.MAX_RETRIES,
-        thread_id=config["configurable"].get("thread_id", _.THREAD_NUMBER),
-        user_id=config["configurable"].get("user_id", _.USER_ID),
         checkpointer=checkpointer,
     )
 
     graph = await bot.build_graph()
-    graph._checkpointer_cm = checkpointer_cm
-    return graph
+    return graph, checkpointer_cm

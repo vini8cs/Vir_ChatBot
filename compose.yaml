@@ -10,14 +10,15 @@ services:
       - ${PDF_FOLDER}:/app/pdfs/
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
-      - ${SQLITE_MEMORY_DATABASE}:/app/sqlite_memory.db
+      - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
       - /tmp/temp_uploads:/tmp/temp_uploads
     environment:
+      - PYTHONUNBUFFERED=1
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
-      - SQLITE_MEMORY_DATABASE=/app/sqlite_memory.db
+      - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
     depends_on:
       - redis
       - worker
@@ -45,14 +46,15 @@ services:
       - ${PDF_FOLDER}:/app/pdfs/
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
-      - ${SQLITE_MEMORY_DATABASE}:/app/sqlite_memory.db
+      - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
       - /tmp/temp_uploads:/tmp/temp_uploads
     environment:
+      - PYTHONUNBUFFERED=1
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
-      - SQLITE_MEMORY_DATABASE=/app/sqlite_memory.db
+      - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
   redis:
     image: redis:7
     ports:

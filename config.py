@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     VECTORSTORE_PATH: str = "vectorstore"
     SQLITE_MEMORY_DATABASE: str = "memory.sqlite"
     CACHE_FOLDER_PATH: str = "cache.csv"
+    API_BASE_URL: str = "http://localhost:8000"
 
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
@@ -66,6 +67,7 @@ SQLITE_MEMORY_DATABASE = settings.SQLITE_MEMORY_DATABASE
 VECTORSTORE_PATH = settings.VECTORSTORE_PATH
 CACHE_FOLDER = settings.CACHE_FOLDER_PATH
 PDF_FOLDER = settings.PDF_FOLDER
+API_BASE_URL = settings.API_BASE_URL
 RETRIEVER_LIMIT = 5
 THREAD_NUMBER = 1
 USER_ID = 1
