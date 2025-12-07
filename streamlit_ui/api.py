@@ -1,13 +1,13 @@
 import json
 import os
 import shutil
-import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List
 
 import aiofiles
+import aiosqlite
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
@@ -148,19 +148,18 @@ async def get_user_threads(user_id: str):
         return {"threads": []}
 
     try:
-        with sqlite3.connect(sqlite_db_path) as conn:
-            cur = conn.cursor()
+        async with aiosqlite.connect(sqlite_db_path) as conn:
             query = """
             SELECT DISTINCT thread_id 
             FROM checkpoints 
             WHERE json_extract(CAST(metadata AS TEXT), '$.user_id') = ?
             """  # noqa: W291
-            cur.execute(query, (str(user_id),))
-            rows = cur.fetchall()
+            async with conn.execute(query, (str(user_id),)) as cur:
+                rows = await cur.fetchall()
 
             return {"threads": [{"thread_id": r[0]} for r in rows]}
 
-    except sqlite3.Error as e:
+    except Exception as e:
         print(f"Database error: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
@@ -173,16 +172,15 @@ async def delete_thread(user_id: str, thread_id: str):
         raise HTTPException(status_code=404, detail="Database not found")
 
     try:
-        with sqlite3.connect(sqlite_db_path) as conn:
-            cur = conn.cursor()
-
+        async with aiosqlite.connect(sqlite_db_path) as conn:
             query = """
             SELECT COUNT(*) FROM checkpoints 
             WHERE thread_id = ? 
             AND json_extract(CAST(metadata AS TEXT), '$.user_id') = ?
             """  # noqa: W291
-            cur.execute(query, (str(thread_id), str(user_id)))
-            count = cur.fetchone()[0]
+            async with conn.execute(query, (str(thread_id), str(user_id))) as cur:
+                row = await cur.fetchone()
+                count = row[0] if row else 0
 
             if count == 0:
                 raise HTTPException(
@@ -190,13 +188,16 @@ async def delete_thread(user_id: str, thread_id: str):
                     detail=f"Thread {thread_id} not found for user {user_id}",
                 )
 
-            cur.execute("DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),))
-            cur.execute("DELETE FROM writes WHERE thread_id = ?", (str(thread_id),))
-            conn.commit()
+            # Delete the thread
+            await conn.execute("DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),))
+            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (str(thread_id),))
+            await conn.commit()
 
             return {"message": f"Thread {thread_id} deleted successfully"}
 
-    except sqlite3.Error as e:
+    except HTTPException:
+        raise
+    except Exception as e:
         print(f"Database error: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
