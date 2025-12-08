@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 import config as _
 from agents.vir_chatbot.vir_chatbot import create_graph, load_global_vectorstore
 from tasks import (
+    app as celery_app,
     create_vectorstore_from_folder,
     create_vectorstore_uploaded_pdfs,
     delete_pdfs_from_vectorstore,
@@ -29,7 +30,10 @@ async def lifespan(app: FastAPI):
     print("Carregando VectorStore na memória...")
     try:
         global_resources["retriever"] = await load_global_vectorstore()
-        print("VectorStore carregado com sucesso.")
+        if global_resources["retriever"]:
+            print("VectorStore carregado com sucesso.")
+        else:
+            print("VectorStore não encontrado. Crie um usando os endpoints de upload.")
     except Exception as e:
         print(f"Erro ao carregar VectorStore: {e}")
         global_resources["retriever"] = None
@@ -41,6 +45,29 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.post("/vectorstore/reload")
+async def reload_vectorstore():
+    """
+    Reload the VectorStore into memory.
+    Call this after creating/updating the VectorStore.
+    """
+    try:
+        global_resources["retriever"] = await load_global_vectorstore()
+        if global_resources["retriever"]:
+            return {
+                "status": "success",
+                "message": "VectorStore recarregado com sucesso.",
+            }
+        else:
+            return {
+                "status": "warning",
+                "message": "VectorStore não encontrado. Crie um primeiro.",
+            }
+    except Exception as e:
+        print(f"Erro ao recarregar VectorStore: {e}")
+        return {"status": "error", "message": f"Erro ao recarregar: {e}"}
 
 
 class DeleteFileRequest(BaseModel):
@@ -129,6 +156,104 @@ async def create_vectorstore_from_folder_endpoint():
     }
 
 
+@app.get("/pdfs/list")
+async def list_pdfs():
+    """
+    List all PDFs in the vectorstore cache.
+    """
+    import pandas as pd
+
+    # CACHE_FOLDER is a directory, the actual file is cache.csv inside it
+    cache_path = os.path.join(_.CACHE_FOLDER, "cache.csv")
+
+    if not os.path.exists(cache_path):
+        return {"pdfs": []}
+
+    try:
+        df = pd.read_csv(cache_path)
+        if "metadata" in df.columns:
+            import json
+
+            filenames = set()
+            for metadata_str in df["metadata"]:
+                try:
+                    metadata = json.loads(metadata_str)
+                    if "filename" in metadata:
+                        filenames.add(metadata["filename"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+            return {"pdfs": sorted(list(filenames))}
+        return {"pdfs": []}
+    except Exception as e:
+        print(f"Error reading cache: {e}")
+        return {"pdfs": []}
+
+
+@app.get("/tasks/{task_id}/status")
+async def get_task_status(task_id: str):
+    """
+    Get the status and progress of a Celery task.
+    """
+    try:
+        task_result = celery_app.AsyncResult(task_id)
+
+        response = {
+            "task_id": task_id,
+            "status": task_result.status,
+            "ready": task_result.ready(),
+            "successful": task_result.successful() if task_result.ready() else None,
+        }
+
+        if task_result.status == "PROGRESS":
+            # Task is in progress
+            info = task_result.info or {}
+            response.update(
+                {
+                    "current": info.get("current", 0),
+                    "total": info.get("total", 0),
+                    "percent": info.get("percent", 0),
+                    "step": info.get("step", ""),
+                    "details": info.get("details", ""),
+                }
+            )
+        elif task_result.status == "SUCCESS":
+            # Task completed successfully
+            result = task_result.result or {}
+            response.update(
+                {
+                    "result": result,
+                    "percent": 100,
+                }
+            )
+        elif task_result.status == "FAILURE":
+            # Task failed
+            response.update(
+                {
+                    "error": (
+                        str(task_result.result)
+                        if task_result.result
+                        else "Unknown error"
+                    ),
+                    "percent": 0,
+                }
+            )
+        elif task_result.status == "PENDING":
+            # Task is pending
+            response.update(
+                {
+                    "percent": 0,
+                    "step": "Aguardando",
+                    "details": "Tarefa na fila...",
+                }
+            )
+
+        return response
+
+    except Exception as e:
+        print(f"Error getting task status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting task status: {e}")
+
+
 @app.post("/threads/create", response_model=ThreadResponse)
 async def create_thread(request: CreateThreadRequest):
     """
@@ -189,8 +314,12 @@ async def delete_thread(user_id: str, thread_id: str):
                 )
 
             # Delete the thread
-            await conn.execute("DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),))
-            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (str(thread_id),))
+            await conn.execute(
+                "DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),)
+            )
+            await conn.execute(
+                "DELETE FROM writes WHERE thread_id = ?", (str(thread_id),)
+            )
             await conn.commit()
 
             return {"message": f"Thread {thread_id} deleted successfully"}
@@ -206,7 +335,9 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
     """
     Gera a resposta em streaming e garante o fechamento da conexão do banco.
     """
-    print(f"[DEBUG] chat_generator called with thread_id={thread_id}, user_id={user_id}")
+    print(
+        f"[DEBUG] chat_generator called with thread_id={thread_id}, user_id={user_id}"
+    )
 
     retriever = global_resources.get("retriever")
     if not retriever:
@@ -246,7 +377,9 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
     finally:
         if checkpointer_cm:
             try:
-                print(f"[DEBUG] Closing checkpointer connection for thread_id={thread_id}")
+                print(
+                    f"[DEBUG] Closing checkpointer connection for thread_id={thread_id}"
+                )
                 await checkpointer_cm.__aexit__(None, None, None)
                 print("[DEBUG] Checkpointer connection closed successfully")
             except Exception as close_err:
