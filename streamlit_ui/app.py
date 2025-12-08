@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
+
 import requests
 import streamlit as st
 
@@ -28,9 +29,7 @@ def get_user_threads_api(user_id: str) -> list:
 
 def create_thread_api(user_id: str) -> dict:
     """Call the API to create a new thread."""
-    response = requests.post(
-        f"{_.API_BASE_URL}/threads/create", json={"user_id": user_id}
-    )
+    response = requests.post(f"{_.API_BASE_URL}/threads/create", json={"user_id": user_id})
     response.raise_for_status()
     return response.json()
 
@@ -91,9 +90,7 @@ def list_pdfs_api() -> list:
 def upload_pdfs_api(files) -> dict:
     """Upload PDFs to create/update vectorstore."""
     try:
-        files_to_upload = [
-            ("files", (file.name, file.getvalue(), "application/pdf")) for file in files
-        ]
+        files_to_upload = [("files", (file.name, file.getvalue(), "application/pdf")) for file in files]
         response = requests.post(
             f"{_.API_BASE_URL}/create-vectorstore-based-on-selected-pdfs/",
             files=files_to_upload,
@@ -117,9 +114,7 @@ def create_vectorstore_from_folder_api() -> dict:
 def delete_pdfs_api(filenames: list) -> dict:
     """Delete PDFs from vectorstore."""
     try:
-        response = requests.post(
-            f"{_.API_BASE_URL}/delete-selected-pdfs/", json={"filenames": filenames}
-        )
+        response = requests.post(f"{_.API_BASE_URL}/delete-selected-pdfs/", json={"filenames": filenames})
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -279,9 +274,7 @@ def render_task_progress():
                     current = status.get("current", 0)
                     total = status.get("total", 0)
 
-                    st.progress(
-                        percent / 100, text=f"🔄 {step}: {details} ({current}/{total})"
-                    )
+                    st.progress(percent / 100, text=f"🔄 {step}: {details} ({current}/{total})")
                     has_running_tasks = True
 
                 elif task_status == "SUCCESS":
@@ -290,9 +283,7 @@ def render_task_progress():
                     result_status = result.get("status", "")
 
                     if result_status == "Falha":
-                        st.error(
-                            f"❌ Falha: {result.get('error', 'Erro desconhecido')}"
-                        )
+                        st.error(f"❌ Falha: {result.get('error', 'Erro desconhecido')}")
                     else:
                         st.success(f"✅ {message}")
                         # Reload VectorStore if it was a creation/upload task
@@ -388,9 +379,7 @@ with st.sidebar:
     st.subheader("📚 Gerenciar VectorStore")
 
     # Reload VectorStore button
-    if st.button(
-        "🔄 Recarregar VectorStore", use_container_width=True, key="reload_vs"
-    ):
+    if st.button("🔄 Recarregar VectorStore", use_container_width=True, key="reload_vs"):
         with st.spinner("Recarregando VectorStore..."):
             result = reload_vectorstore_api()
             if result.get("status") == "success":
@@ -420,9 +409,7 @@ with st.sidebar:
                         st.success(f"✅ {result.get('message', 'PDFs enviados!')}")
                         task_id = result.get("task_id")
                         if task_id:
-                            add_active_task(
-                                task_id, f"Upload de {len(uploaded_files)} PDF(s)"
-                            )
+                            add_active_task(task_id, f"Upload de {len(uploaded_files)} PDF(s)")
                             st.rerun()
 
         st.markdown("---")
@@ -444,9 +431,7 @@ with st.sidebar:
     # Expander for managing PDFs in vectorstore
     with st.expander("📋 PDFs no VectorStore", expanded=False):
         # Refresh button
-        if st.button(
-            "🔄 Atualizar Lista", use_container_width=True, key="refresh_pdfs"
-        ):
+        if st.button("🔄 Atualizar Lista", use_container_width=True, key="refresh_pdfs"):
             st.session_state.pdf_list = list_pdfs_api()
             st.rerun()
 
@@ -466,11 +451,7 @@ with st.sidebar:
             search_term = st.text_input("🔍 Buscar PDF", key="pdf_search")
 
             # Filter PDFs based on search
-            filtered_pdfs = (
-                [pdf for pdf in pdf_list if search_term.lower() in pdf.lower()]
-                if search_term
-                else pdf_list
-            )
+            filtered_pdfs = [pdf for pdf in pdf_list if search_term.lower() in pdf.lower()] if search_term else pdf_list
 
             # Multiselect for PDFs
             selected = st.multiselect(
@@ -483,9 +464,7 @@ with st.sidebar:
             if selected:
                 st.warning(f"⚠️ {len(selected)} PDF(s) selecionado(s) para exclusão")
 
-                if st.button(
-                    "🗑️ Excluir Selecionados", type="primary", use_container_width=True
-                ):
+                if st.button("🗑️ Excluir Selecionados", type="primary", use_container_width=True):
                     with st.spinner("Excluindo PDFs..."):
                         result = delete_pdfs_api(selected)
                         if "error" in result:
@@ -494,9 +473,7 @@ with st.sidebar:
                             st.success(f"✅ {result.get('message', 'PDFs excluídos!')}")
                             task_id = result.get("task_id")
                             if task_id:
-                                add_active_task(
-                                    task_id, f"Excluir {len(selected)} PDF(s)"
-                                )
+                                add_active_task(task_id, f"Excluir {len(selected)} PDF(s)")
                             # Refresh the list
                             st.session_state.pdf_list = list_pdfs_api()
                             st.rerun()

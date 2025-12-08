@@ -22,9 +22,7 @@ class Vir_ChatBot:
     ):
         self.retriever = retriever
         self.checkpointer = checkpointer
-        self.llm = ChatGoogleGenerativeAI(
-            model=llm_model, temperature=temperature, max_retries=max_retries
-        )
+        self.llm = ChatGoogleGenerativeAI(model=llm_model, temperature=temperature, max_retries=max_retries)
         self.graph = None
 
     async def build_graph(self):
@@ -57,9 +55,7 @@ async def load_global_vectorstore():
     # Check if vectorstore exists
     vectorstore_index = os.path.join(_.VECTORSTORE_PATH, "index.faiss")
     if not os.path.exists(vectorstore_index):
-        print(
-            f"VectorStore not found at {_.VECTORSTORE_PATH}. It will be created when PDFs are added."
-        )
+        print(f"VectorStore not found at {_.VECTORSTORE_PATH}. It will be created when PDFs are added.")
         return None
 
     embeddings = GoogleGenerativeAIEmbeddings(model=_.EMBEDDING_MODEL)
@@ -69,9 +65,7 @@ async def load_global_vectorstore():
         embeddings,
         allow_dangerous_deserialization=True,
     )
-    return vectorstore.as_retriever(
-        search_type="similarity", search_kwargs={"k": _.RETRIEVER_LIMIT}
-    )
+    return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": _.RETRIEVER_LIMIT})
 
 
 async def create_graph(global_retriever):

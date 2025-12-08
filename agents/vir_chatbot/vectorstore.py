@@ -83,24 +83,18 @@ class VectorStoreCreator(Gemini):
 
     def _start_docling_config(self):
         logging.info("Starting docling configuration...")
-        self.tokenizer_tool = TokenizerWrapper(
-            model_name=self.tokenizer_model, max_length=self.token_size
-        )
+        self.tokenizer_tool = TokenizerWrapper(model_name=self.tokenizer_model, max_length=self.token_size)
         self.chunker = HybridChunker(
             tokenizer=self.tokenizer_tool,
             max_tokens=self.token_size,
             merge_peers=True,
         )
-        accelerator_options = AcceleratorOptions(
-            num_threads=self.threads, device=AcceleratorDevice.CPU
-        )
+        accelerator_options = AcceleratorOptions(num_threads=self.threads, device=AcceleratorDevice.CPU)
         pipeline_options = PdfPipelineOptions(generate_picture_images=True)
         pipeline_options.accelerator_options = accelerator_options
         pipeline_options.enable_remote_services = True
         self.converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-            }
+            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
         )
 
     def _save_cache(self):
@@ -143,21 +137,15 @@ class VectorStoreCreator(Gemini):
     def recover_deleted_pdfs_from_cache(self):
         logging.info("Recovering deleted PDFs from cache...")
         self.cache_to_delete = self.cache_df[
-            self.cache_df["metadata"].apply(
-                lambda x: x["filename"] in self.pdf_to_delete
-            )
+            self.cache_df["metadata"].apply(lambda x: x["filename"] in self.pdf_to_delete)
         ]
         if self.cache_to_delete.empty:
             raise NoCacheFoundError("No matching PDFs found in cache to delete.")
 
         self.uudis_to_remove = self.cache_to_delete["id"].unique().tolist()
-        self.filtered_df = self.cache_df[
-            ~self.cache_df["id"].isin(self.uudis_to_remove)
-        ].reset_index(drop=True)
+        self.filtered_df = self.cache_df[~self.cache_df["id"].isin(self.uudis_to_remove)].reset_index(drop=True)
 
-        logging.info(
-            f"Found {len(self.uudis_to_remove)} UUIDs to delete from vectorstore"
-        )
+        logging.info(f"Found {len(self.uudis_to_remove)} UUIDs to delete from vectorstore")
 
     def delete_uuids_from_vectorstore(self):
         logging.info("Deleting UUIDs from vectorstore...")
@@ -185,20 +173,12 @@ class VectorStoreCreator(Gemini):
                     "contents": chunk.text,
                     "metadata": json.dumps(
                         {
-                            "filename": os.path.join(
-                                directory, chunk.meta.origin.filename
-                            ),
+                            "filename": os.path.join(directory, chunk.meta.origin.filename),
                             "page_numbers": sorted(
-                                {
-                                    prov.page_no
-                                    for item in chunk.meta.doc_items
-                                    for prov in item.prov
-                                }
+                                {prov.page_no for item in chunk.meta.doc_items for prov in item.prov}
                             )
                             or None,
-                            "title": (
-                                chunk.meta.headings[0] if chunk.meta.headings else None
-                            ),
+                            "title": (chunk.meta.headings[0] if chunk.meta.headings else None),
                         }
                     ),
                 }
@@ -207,17 +187,13 @@ class VectorStoreCreator(Gemini):
 
         def extract_image_from_chunk(picture, filename):
             image_uri = str(
-                picture.image.get("uri")
-                if isinstance(picture.image, dict)
-                else getattr(picture.image, "uri", None)
+                picture.image.get("uri") if isinstance(picture.image, dict) else getattr(picture.image, "uri", None)
             )
 
             if image_uri.startswith("data:") and "base64," in image_uri:
                 image_uri = image_uri.split("base64,")[-1]
 
-            page_numbers = (
-                sorted({prov.page_no for prov in getattr(picture, "prov", [])}) or None
-            )
+            page_numbers = sorted({prov.page_no for prov in getattr(picture, "prov", [])}) or None
 
             return {
                 "id": str(uuid.uuid1()),
@@ -237,9 +213,7 @@ class VectorStoreCreator(Gemini):
             result = self.converter.convert(source=pdf_path)
             chunk_iter = self.chunker.chunk(dl_doc=result.document)
             chunks = list(chunk_iter)
-            text_chunks.extend(
-                extract_text_from_chunk(chunks, os.path.dirname(pdf_path))
-            )
+            text_chunks.extend(extract_text_from_chunk(chunks, os.path.dirname(pdf_path)))
             for picture in result.document.pictures:
                 image_chunks.append(extract_image_from_chunk(picture, pdf_path))
 
@@ -258,9 +232,7 @@ class VectorStoreCreator(Gemini):
 
         processed_df = df.copy()
         processed_df["summarized_content"] = processed_df["contents"].apply(
-            self._generate_text_summaries
-            if content == "text"
-            else self._genenate_image_summaries
+            self._generate_text_summaries if content == "text" else self._genenate_image_summaries
         )
         processed_df = processed_df.dropna(subset=["summarized_content"])
         processed_df["summarized_content"] = processed_df["summarized_content"].apply(
@@ -270,25 +242,15 @@ class VectorStoreCreator(Gemini):
 
     def _filter_reference_info(self):
         filtered_df = self.merged_df.copy()
-        filtered_df = filtered_df[
-            filtered_df["isReference"].astype(str).str.lower() == "false"
-        ]
-        self.filtered_df = filtered_df.drop(columns="isReference").reset_index(
-            drop=True
-        )
+        filtered_df = filtered_df[filtered_df["isReference"].astype(str).str.lower() == "false"]
+        self.filtered_df = filtered_df.drop(columns="isReference").reset_index(drop=True)
 
     def _summarization_process(self):
         if not self.dont_summarize:
             logging.info("Summarizing chunks...")
-            self.text_processed = self._summarize_df(
-                self.text_chunks_df, content="text"
-            )
-            self.image_processed = self._summarize_df(
-                self.image_chunks_df, content="image"
-            )
-            merged_df = pd.concat(
-                [self.text_processed, self.image_processed]
-            ).reset_index(drop=True)
+            self.text_processed = self._summarize_df(self.text_chunks_df, content="text")
+            self.image_processed = self._summarize_df(self.image_chunks_df, content="image")
+            merged_df = pd.concat([self.text_processed, self.image_processed]).reset_index(drop=True)
         else:
             logging.info("Skipping summarization...")
             merged_df = self.text_chunks_df.copy()
@@ -298,9 +260,7 @@ class VectorStoreCreator(Gemini):
 
     def _check_vectorstore_exists(self):
         logging.info("Checking if vectorstore exist...")
-        return os.path.exists(self.vectorstore_path) and os.listdir(
-            self.vectorstore_path
-        )
+        return os.path.exists(self.vectorstore_path) and os.listdir(self.vectorstore_path)
 
     def _load_faiss_vectorstore(self):
         logging.info("Loading vectorstore...")
@@ -315,8 +275,7 @@ class VectorStoreCreator(Gemini):
 
         self.texts_for_vectorstore = self.filtered_df["summary"].tolist()
         self.metadatas_for_vectorstore = [
-            json.loads(m) if isinstance(m, str) else m
-            for m in self.filtered_df["metadata"]
+            json.loads(m) if isinstance(m, str) else m for m in self.filtered_df["metadata"]
         ]
         self.ids_for_vectorstore = self.filtered_df["id"].tolist()
 
@@ -377,16 +336,12 @@ class VectorStoreCreator(Gemini):
 
     def delete_pdfs(self):
         if not self._check_chache():
-            raise NoCacheFoundError(
-                "No cache found. Try creating the vectorstor first!"
-            )
+            raise NoCacheFoundError("No cache found. Try creating the vectorstor first!")
         self._load_cache()
         self.recover_deleted_pdfs_from_cache()
         if self._check_vectorstore_exists():
             self._load_faiss_vectorstore()
         else:
-            raise NoVectorStoreFoundError(
-                "No vectorstore found. Try creating the vectorstor first!"
-            )
+            raise NoVectorStoreFoundError("No vectorstore found. Try creating the vectorstor first!")
         self.delete_uuids_from_vectorstore()
         self._reformat_chache_after_deletion()

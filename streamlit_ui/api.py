@@ -15,8 +15,8 @@ from pydantic import BaseModel, Field
 
 import config as _
 from agents.vir_chatbot.vir_chatbot import create_graph, load_global_vectorstore
+from tasks import app as celery_app
 from tasks import (
-    app as celery_app,
     create_vectorstore_from_folder,
     create_vectorstore_uploaded_pdfs,
     delete_pdfs_from_vectorstore,
@@ -229,11 +229,7 @@ async def get_task_status(task_id: str):
             # Task failed
             response.update(
                 {
-                    "error": (
-                        str(task_result.result)
-                        if task_result.result
-                        else "Unknown error"
-                    ),
+                    "error": (str(task_result.result) if task_result.result else "Unknown error"),
                     "percent": 0,
                 }
             )
@@ -314,12 +310,8 @@ async def delete_thread(user_id: str, thread_id: str):
                 )
 
             # Delete the thread
-            await conn.execute(
-                "DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),)
-            )
-            await conn.execute(
-                "DELETE FROM writes WHERE thread_id = ?", (str(thread_id),)
-            )
+            await conn.execute("DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),))
+            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (str(thread_id),))
             await conn.commit()
 
             return {"message": f"Thread {thread_id} deleted successfully"}
@@ -335,9 +327,7 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
     """
     Gera a resposta em streaming e garante o fechamento da conexão do banco.
     """
-    print(
-        f"[DEBUG] chat_generator called with thread_id={thread_id}, user_id={user_id}"
-    )
+    print(f"[DEBUG] chat_generator called with thread_id={thread_id}, user_id={user_id}")
 
     retriever = global_resources.get("retriever")
     if not retriever:
@@ -377,9 +367,7 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
     finally:
         if checkpointer_cm:
             try:
-                print(
-                    f"[DEBUG] Closing checkpointer connection for thread_id={thread_id}"
-                )
+                print(f"[DEBUG] Closing checkpointer connection for thread_id={thread_id}")
                 await checkpointer_cm.__aexit__(None, None, None)
                 print("[DEBUG] Checkpointer connection closed successfully")
             except Exception as close_err:
