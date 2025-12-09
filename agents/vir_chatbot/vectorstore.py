@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import uuid
 
 import pandas as pd
@@ -51,7 +52,7 @@ class VectorStoreCreator(Gemini):
         max_retries: int = _.MAX_RETRIES,
         tokenizer_model: str = _.TOKENIZER_MODEL,
         threads: int = _.THREADS,
-        dont_summarize: bool = _.DONT_SUMMARIZE,
+        summarize: bool = _.SUMMARIZE,
     ):
         super().__init__(
             gemini_model=gemini_model,
@@ -71,7 +72,7 @@ class VectorStoreCreator(Gemini):
         self.vectorstore_path = vectorstore_path
         self.tokenizer_model = tokenizer_model
         self.threads = threads
-        self.dont_summarize = dont_summarize
+        self.summarize = summarize
 
         self._start_docling_config()
 
@@ -80,6 +81,13 @@ class VectorStoreCreator(Gemini):
 
         if pdfs_to_add:
             self.pdfs_to_add = pdfs_to_add
+
+    @staticmethod
+    def clean_text(text: str) -> str:
+        if isinstance(text, str) and len(text.split()) > 3 and text is not None:
+            cleaned_text = re.sub(r"\u2022", "", text)
+            return re.sub(r"\s+", " ", cleaned_text).strip()
+        return None
 
     def _start_docling_config(self):
         logging.info("Starting docling configuration...")
@@ -98,7 +106,7 @@ class VectorStoreCreator(Gemini):
         )
 
     def _save_cache(self):
-        logging.info(f"Saving cache to {self.cache}...")
+        logging.info(f"Saving cache to {self.cache} ...")
         chache_to_save = self.filtered_df.copy()
         chache_to_save["metadata"] = chache_to_save["metadata"].apply(
             lambda x: json.dumps(x) if not isinstance(x, str) else x
@@ -129,15 +137,17 @@ class VectorStoreCreator(Gemini):
 
     def _diff_vs_cache(self):
         logging.info("Diffing PDFs vs Cache...")
-        pdf_path_set = set(self.pdf_paths)
-        self.pdf_paths = list(pdf_path_set - self.pdf_list)
+        self.pdf_paths = [pdf_path for pdf_path in self.pdf_paths if os.path.basename(pdf_path) not in self.pdf_list]
         if len(self.pdf_paths) == 0:
             raise NoNewPDFError("No new PDF was found...")
 
     def recover_deleted_pdfs_from_cache(self):
         logging.info("Recovering deleted PDFs from cache...")
+
+        filenames_to_delete = [os.path.basename(pdf) for pdf in self.pdf_to_delete]
+
         self.cache_to_delete = self.cache_df[
-            self.cache_df["metadata"].apply(lambda x: x["filename"] in self.pdf_to_delete)
+            self.cache_df["metadata"].apply(lambda x: x["filename"] in filenames_to_delete)
         ]
         if self.cache_to_delete.empty:
             raise NoCacheFoundError("No matching PDFs found in cache to delete.")
@@ -161,19 +171,20 @@ class VectorStoreCreator(Gemini):
         self.pdf_paths = []
         for root, _loop, files in os.walk(self.pdf_folder):
             for f in files:
-                if f.lower().endswith(".pdf"):
-                    full_path = os.path.join(root, f)
-                    self.pdf_paths.append(full_path)
+                if not f.lower().endswith(".pdf"):
+                    continue
+                full_path = os.path.join(root, f)
+                self.pdf_paths.append(full_path)
 
-    def _chunking_documents_with_docling(self):
-        def extract_text_from_chunk(chunks, directory):
+    def _chunking_documents_with_docling(self, pdf_path):
+        def extract_text_from_chunk(chunks, filename):
             return [
                 {
                     "id": str(uuid.uuid1()),
                     "contents": chunk.text,
                     "metadata": json.dumps(
                         {
-                            "filename": os.path.join(directory, chunk.meta.origin.filename),
+                            "filename": os.path.basename(filename),
                             "page_numbers": sorted(
                                 {prov.page_no for item in chunk.meta.doc_items for prov in item.prov}
                             )
@@ -200,7 +211,7 @@ class VectorStoreCreator(Gemini):
                 "contents": image_uri,
                 "metadata": json.dumps(
                     {
-                        "filename": filename,
+                        "filename": os.path.basename(filename),
                         "page_numbers": page_numbers,
                         "title": None,
                     }
@@ -208,20 +219,34 @@ class VectorStoreCreator(Gemini):
             }
 
         image_chunks = []
-        text_chunks = []
-        for pdf_path in self.pdf_paths:
-            result = self.converter.convert(source=pdf_path)
-            chunk_iter = self.chunker.chunk(dl_doc=result.document)
-            chunks = list(chunk_iter)
-            text_chunks.extend(extract_text_from_chunk(chunks, os.path.dirname(pdf_path)))
-            for picture in result.document.pictures:
-                image_chunks.append(extract_image_from_chunk(picture, pdf_path))
+        result = self.converter.convert(source=pdf_path)
+        chunk_iter = self.chunker.chunk(dl_doc=result.document)
+        chunks = list(chunk_iter)
+        for picture in result.document.pictures:
+            image_chunks.append(extract_image_from_chunk(picture, pdf_path))
 
-        self.text_chunks_df = pd.DataFrame(text_chunks)
-        self.image_chunks_df = pd.DataFrame(image_chunks)
+        text_chunks = extract_text_from_chunk(chunks, pdf_path)
+        return text_chunks, image_chunks
 
-        logging.info(f"Text chunks: {len(self.text_chunks_df)}")
-        logging.info(f"Image chunks: {len(self.image_chunks_df)}")
+    def summarization_process(self, df, content):
+        def filter_reference_info(df):
+            df_copy = df.copy()
+            filtered_df = df_copy[df_copy["isReference"].astype(str).str.lower() == "false"]
+            return filtered_df.drop(columns="isReference").reset_index(drop=True)
+
+        logging.info(f"Starting summarization process for {content} content...")
+
+        if df.empty:
+            logging.info("DataFrame is empty, skipping summarization.")
+            return df
+        if not self.summarize:
+            logging.info("Skipping summarization...")
+            summarized_df = df.copy()
+            summarized_df["summary"] = summarized_df["contents"].apply(self.clean_text)
+            return summarized_df
+        logging.info("Summarizing chunks...")
+        summarized_df = self._summarize_df(df, content=content)
+        return filter_reference_info(summarized_df)
 
     def _summarize_df(self, df, content="text"):
         def update_metadata_and_summary(df):
@@ -240,23 +265,27 @@ class VectorStoreCreator(Gemini):
         )
         return update_metadata_and_summary(processed_df)
 
-    def _filter_reference_info(self):
-        filtered_df = self.merged_df.copy()
-        filtered_df = filtered_df[filtered_df["isReference"].astype(str).str.lower() == "false"]
-        self.filtered_df = filtered_df.drop(columns="isReference").reset_index(drop=True)
+    def _start_chunking_process(self):
 
-    def _summarization_process(self):
-        if not self.dont_summarize:
-            logging.info("Summarizing chunks...")
-            self.text_processed = self._summarize_df(self.text_chunks_df, content="text")
-            self.image_processed = self._summarize_df(self.image_chunks_df, content="image")
-            merged_df = pd.concat([self.text_processed, self.image_processed]).reset_index(drop=True)
-        else:
-            logging.info("Skipping summarization...")
-            merged_df = self.text_chunks_df.copy()
-            merged_df["summary"] = merged_df["contents"]
+        all_text_chunks = []
+        all_image_chunks = []
 
-        self.merged_df = merged_df.dropna(subset=["summary"])
+        for pdf_path in self.pdf_paths:
+            text_chunks, image_chunks = self._chunking_documents_with_docling(pdf_path)
+            all_text_chunks.extend(text_chunks)
+            all_image_chunks.extend(image_chunks)
+
+        text_chunks_df = pd.DataFrame(all_text_chunks)
+        image_chunks_df = pd.DataFrame(all_image_chunks)
+
+        text_summarized = self.summarization_process(text_chunks_df, content="text")
+        image_summarized = self.summarization_process(image_chunks_df, content="image")
+
+        logging.info(f"Text chunks: {len(text_summarized)}")
+        logging.info(f"Image chunks: {len(image_summarized)}")
+
+        merged_df = pd.concat([text_summarized, image_summarized]).reset_index(drop=True)
+        self.filtered_df = merged_df.dropna(subset=["summary"])
 
     def _check_vectorstore_exists(self):
         logging.info("Checking if vectorstore exist...")
@@ -281,12 +310,12 @@ class VectorStoreCreator(Gemini):
 
     def _adding_chunks_to_vectorstore(self):
         logging.info("Adding chunks to vectorstore...")
-        self.vectorstore.from_texts(
+        self.vectorstore.add_texts(
             self.texts_for_vectorstore,
-            self.embeddings,
             metadatas=self.metadatas_for_vectorstore,
             ids=self.ids_for_vectorstore,
         )
+        self.vectorstore.save_local(self.vectorstore_path)
 
     def _save_faiss_vectorstore(self):
         logging.info("Saving vectorstore...")
@@ -303,12 +332,7 @@ class VectorStoreCreator(Gemini):
         self._find_pdf()
         if self._check_chache() or self._check_vectorstore_exists():
             raise VectorAlreadyCreatedError("Vectorstore already created.")
-        self._chunking_documents_with_docling()
-        self._summarization_process()
-        if not self.dont_summarize:
-            self._filter_reference_info()
-        else:
-            self.filtered_df = self.merged_df.copy()
+        self._start_chunking_process()
         self._processing_faiss_vectorstore_data()
         self._save_faiss_vectorstore()
         self._save_cache()
@@ -319,12 +343,7 @@ class VectorStoreCreator(Gemini):
         if self._check_chache():
             self._load_cache()
             self._diff_vs_cache()
-        self._chunking_documents_with_docling()
-        self._summarization_process()
-        if not self.dont_summarize:
-            self._filter_reference_info()
-        else:
-            self.filtered_df = self.merged_df.copy()
+        self._start_chunking_process()
         self._processing_faiss_vectorstore_data()
 
         if self._check_vectorstore_exists():
