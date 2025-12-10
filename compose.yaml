@@ -19,20 +19,14 @@ services:
       - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
       - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
     depends_on:
       - redis
       - worker
-    develop:
-      watch:
-        - action: sync
-          path: .
-          target: /app
-          ignore:
-            - .venv/
-        - action: rebuild
-          path: ./pyproject.toml
-        - action: rebuild
-          path: ./Dockerfile
 
   worker:
     build: .
@@ -66,3 +60,29 @@ services:
       - REDIS_HOSTS=local:redis:6379
     ports:
       - "8081:8081"
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ${VECTORSTORE_PATH}:/app/vectorstore/
+      - ${PDF_FOLDER}:/app/pdfs/
+      - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
+      - ${CACHE_FOLDER_PATH}:/app/cache/
+      - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
+    environment:
+      - PYTHONUNBUFFERED=1
+      - VECTORSTORE_PATH=/app/vectorstore/
+      - PDF_FOLDER=/app/pdfs/
+      - GCP_CREDENTIALS=/app/gcp_credentials.json
+      - CACHE_FOLDER_PATH=/app/cache/
+      - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
+      - API_BASE_URL=http://web:8000
+    depends_on:
+      web:
+        condition: service_healthy

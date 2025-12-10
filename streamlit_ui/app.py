@@ -1,15 +1,11 @@
-import sys
-from pathlib import Path
-
-# Add parent directory to path so we can import config
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import json
+import os
 
 import requests
 import streamlit as st
 
-import config as _
+# URL da API - pode ser configurada via variável de ambiente
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # Page config
 st.set_page_config(page_title="Vir ChatBot", page_icon="🤖", layout="wide")
@@ -18,7 +14,7 @@ st.set_page_config(page_title="Vir ChatBot", page_icon="🤖", layout="wide")
 def get_user_threads_api(user_id: str) -> list:
     """Call the API to get all threads for a user."""
     try:
-        response = requests.get(f"{_.API_BASE_URL}/threads/{user_id}")
+        response = requests.get(f"{API_BASE_URL}/threads/{user_id}")
         response.raise_for_status()
         data = response.json()
         return data.get("threads", [])
@@ -29,14 +25,14 @@ def get_user_threads_api(user_id: str) -> list:
 
 def create_thread_api(user_id: str) -> dict:
     """Call the API to create a new thread."""
-    response = requests.post(f"{_.API_BASE_URL}/threads/create", json={"user_id": user_id})
+    response = requests.post(f"{API_BASE_URL}/threads/create", json={"user_id": user_id})
     response.raise_for_status()
     return response.json()
 
 
 def delete_thread_api(user_id: str, thread_id: str):
     """Call the API to delete a thread for a specific user."""
-    response = requests.delete(f"{_.API_BASE_URL}/threads/{user_id}/{thread_id}")
+    response = requests.delete(f"{API_BASE_URL}/threads/{user_id}/{thread_id}")
     response.raise_for_status()
     return response.json()
 
@@ -47,7 +43,7 @@ def chat_stream_api(message: str, thread_id: str, user_id: str):
     """
     try:
         response = requests.post(
-            f"{_.API_BASE_URL}/chat/stream",
+            f"{API_BASE_URL}/chat/stream",
             json={"message": message, "thread_id": thread_id, "user_id": user_id},
             stream=True,
         )
@@ -78,7 +74,7 @@ def chat_stream_api(message: str, thread_id: str, user_id: str):
 def list_pdfs_api() -> list:
     """Get list of PDFs in the vectorstore cache."""
     try:
-        response = requests.get(f"{_.API_BASE_URL}/pdfs/list")
+        response = requests.get(f"{API_BASE_URL}/pdfs/list")
         response.raise_for_status()
         data = response.json()
         return data.get("pdfs", [])
@@ -92,7 +88,7 @@ def upload_pdfs_api(files) -> dict:
     try:
         files_to_upload = [("files", (file.name, file.getvalue(), "application/pdf")) for file in files]
         response = requests.post(
-            f"{_.API_BASE_URL}/create-vectorstore-based-on-selected-pdfs/",
+            f"{API_BASE_URL}/create-vectorstore-based-on-selected-pdfs/",
             files=files_to_upload,
         )
         response.raise_for_status()
@@ -104,7 +100,7 @@ def upload_pdfs_api(files) -> dict:
 def create_vectorstore_from_folder_api() -> dict:
     """Create vectorstore from folder."""
     try:
-        response = requests.post(f"{_.API_BASE_URL}/create-vectorstore-from-folder/")
+        response = requests.post(f"{API_BASE_URL}/create-vectorstore-from-folder/")
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -114,7 +110,7 @@ def create_vectorstore_from_folder_api() -> dict:
 def delete_pdfs_api(filenames: list) -> dict:
     """Delete PDFs from vectorstore."""
     try:
-        response = requests.post(f"{_.API_BASE_URL}/delete-selected-pdfs/", json={"filenames": filenames})
+        response = requests.post(f"{API_BASE_URL}/delete-selected-pdfs/", json={"filenames": filenames})
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -124,7 +120,7 @@ def delete_pdfs_api(filenames: list) -> dict:
 def reload_vectorstore_api() -> dict:
     """Reload the VectorStore into memory after creation/update."""
     try:
-        response = requests.post(f"{_.API_BASE_URL}/vectorstore/reload")
+        response = requests.post(f"{API_BASE_URL}/vectorstore/reload")
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -134,7 +130,7 @@ def reload_vectorstore_api() -> dict:
 def get_task_status_api(task_id: str) -> dict:
     """Get the status and progress of a background task."""
     try:
-        response = requests.get(f"{_.API_BASE_URL}/tasks/{task_id}/status")
+        response = requests.get(f"{API_BASE_URL}/tasks/{task_id}/status")
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -533,8 +529,7 @@ else:
     ### Como usar:
     1. Clique em **"Nova Conversa"** no menu lateral para criar um novo chat
     2. Digite sua mensagem na caixa de texto abaixo
-    3. O assistente irá responder baseado no conhecimento disponível
-    
+    3. O assistente irá responder baseado no conhecimento disponível    
     ---
     *Selecione ou crie uma conversa para começar!*
     """

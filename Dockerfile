@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y libgl1-mesa-glx \
     libxrender1 \
     libxext6 \
     poppler-utils \
-    tesseract-ocr
+    tesseract-ocr \
+    curl
 
 ENV UV_COMPILE_BYTECODE=1
 
@@ -27,4 +28,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 ENTRYPOINT []
 
-CMD ["uvicorn", "streamlit_ui.api:app", "--host", "0.0.0.0", "--port", "8000" ]
+CMD ["uvicorn", "streamlit_ui.api:app", "--host", "0.0.0.0", "--port", "8000"]

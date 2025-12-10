@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import os
 from functools import partial
 
 from langchain_community.vectorstores import FAISS
@@ -50,15 +52,13 @@ class Vir_ChatBot:
 
 
 async def load_global_vectorstore():
-    import os
-
-    # Check if vectorstore exists
     vectorstore_index = os.path.join(_.VECTORSTORE_PATH, "index.faiss")
     if not os.path.exists(vectorstore_index):
-        print(f"VectorStore not found at {_.VECTORSTORE_PATH}. It will be created when PDFs are added.")
+        logging.info(f"VectorStore not found at {_.VECTORSTORE_PATH}. It will be created when PDFs are added.")
         return None
 
     embeddings = GoogleGenerativeAIEmbeddings(model=_.EMBEDDING_MODEL)
+    logging.info("Loading VectorStore...")
     vectorstore = await asyncio.to_thread(
         FAISS.load_local,
         _.VECTORSTORE_PATH,
@@ -69,8 +69,17 @@ async def load_global_vectorstore():
 
 
 async def create_graph(global_retriever):
-    checkpointer_cm = AsyncSqliteSaver.from_conn_string(_.SQLITE_MEMORY_DATABASE)
+    # Use WAL mode connection string for better concurrency
+    db_path = _.SQLITE_MEMORY_DATABASE
+    conn_string = f"file:{db_path}?mode=rwc"
+
+    checkpointer_cm = AsyncSqliteSaver.from_conn_string(conn_string)
     checkpointer = await checkpointer_cm.__aenter__()
+
+    # Enable WAL mode for better concurrent access
+    if hasattr(checkpointer, "conn") and checkpointer.conn:
+        await checkpointer.conn.execute("PRAGMA journal_mode=WAL;")
+        await checkpointer.conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout
 
     bot = Vir_ChatBot(
         retriever=global_retriever,

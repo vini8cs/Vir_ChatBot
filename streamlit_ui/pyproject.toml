@@ -1,0 +1,10 @@
+[project]
+name = "vir-chatbot-streamlit"
+version = "0.1.0"
+description = "Streamlit UI for Vir ChatBot"
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit==1.51.0",
+    "streamlit-autorefresh>=1.0.1",
+    "requests>=2.31.0",
+]

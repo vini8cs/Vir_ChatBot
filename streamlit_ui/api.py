@@ -1,6 +1,8 @@
 import json
+import logging
 import os
 import shutil
+import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,52 +24,14 @@ from tasks import (
     delete_pdfs_from_vectorstore,
 )
 
-global_resources = {}
+
+# Filtro para não logar requisições do healthcheck
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/health" not in record.getMessage()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("Carregando VectorStore na memória...")
-    try:
-        global_resources["retriever"] = await load_global_vectorstore()
-        if global_resources["retriever"]:
-            print("VectorStore carregado com sucesso.")
-        else:
-            print("VectorStore não encontrado. Crie um usando os endpoints de upload.")
-    except Exception as e:
-        print(f"Erro ao carregar VectorStore: {e}")
-        global_resources["retriever"] = None
-
-    yield
-
-    global_resources.clear()
-    print("Recursos limpos.")
-
-
-app = FastAPI(lifespan=lifespan)
-
-
-@app.post("/vectorstore/reload")
-async def reload_vectorstore():
-    """
-    Reload the VectorStore into memory.
-    Call this after creating/updating the VectorStore.
-    """
-    try:
-        global_resources["retriever"] = await load_global_vectorstore()
-        if global_resources["retriever"]:
-            return {
-                "status": "success",
-                "message": "VectorStore recarregado com sucesso.",
-            }
-        else:
-            return {
-                "status": "warning",
-                "message": "VectorStore não encontrado. Crie um primeiro.",
-            }
-    except Exception as e:
-        print(f"Erro ao recarregar VectorStore: {e}")
-        return {"status": "error", "message": f"Erro ao recarregar: {e}"}
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 
 class DeleteFileRequest(BaseModel):
@@ -89,8 +53,70 @@ class ThreadResponse(BaseModel):
     user_id: str
 
 
+global_resources = {}
 TEMP_UPLOAD_DIR = "/tmp/temp_uploads"
 Path(TEMP_UPLOAD_DIR).mkdir(exist_ok=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize SQLite with WAL mode for better concurrency
+    print("Initializing SQLite with WAL mode...")
+    try:
+        db_dir = os.path.dirname(_.SQLITE_MEMORY_DATABASE)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+
+        conn = sqlite3.connect(_.SQLITE_MEMORY_DATABASE)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout
+        conn.close()
+        logging.info(f"SQLite WAL mode enabled for {_.SQLITE_MEMORY_DATABASE}")
+    except Exception as e:
+        logging.warning(f"Could not enable WAL mode: {e}")
+
+    print("Carregando VectorStore na memória...")
+    try:
+        global_resources["retriever"] = await load_global_vectorstore()
+        if global_resources["retriever"]:
+            logging.info("VectorStore load sucessfully!")
+        else:
+            logging.info("VectorStore não encontrado. Crie um primeiro.")
+    except Exception as e:
+        logging.error(f"Erro ao carregar VectorStore: {e}. Tente criar primeiramente.")
+        global_resources["retriever"] = None
+
+    yield
+
+    global_resources.clear()
+    logging.info("Recursos limpos.")
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for container orchestration."""
+    return {"status": "healthy"}
+
+
+@app.post("/vectorstore/reload")
+async def reload_vectorstore():
+    try:
+        global_resources["retriever"] = await load_global_vectorstore()
+        if global_resources["retriever"]:
+            return {
+                "status": "success",
+                "message": "VectorStore recarregado com sucesso.",
+            }
+        return {
+            "status": "warning",
+            "message": "VectorStore não encontrado. Crie um primeiro.",
+        }
+    except Exception as e:
+        logging.info(f"Erro ao recarregar VectorStore: {e}")
+        return {"status": "error", "message": f"Erro ao recarregar: {e}"}
 
 
 @app.post("/create-vectorstore-based-on-selected-pdfs/")
@@ -100,6 +126,7 @@ async def upload_pdf(
     request_id = str(uuid.uuid4())
     upload_dir = os.path.join(TEMP_UPLOAD_DIR, request_id)
     Path(upload_dir).mkdir(exist_ok=True)
+
     pdf_files_to_upload = []
     try:
         for file in files:
@@ -182,7 +209,7 @@ async def list_pdfs():
                         filenames.add(metadata["filename"])
                 except (json.JSONDecodeError, TypeError):
                     continue
-            return {"pdfs": sorted(list(filenames))}
+            return {"pdfs": sorted(filenames)}
         return {"pdfs": []}
     except Exception as e:
         print(f"Error reading cache: {e}")
@@ -331,7 +358,8 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
 
     retriever = global_resources.get("retriever")
     if not retriever:
-        yield f"data: {json.dumps({'error': 'VectorStore não inicializado.'})}\n\n"
+        yield "data: "
+        f"{json.dumps({'error': 'VectorStore não inicializado. Por favor, crie ou recarregue o VectorStore.'})}\n\n"
         return
 
     graph_config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
@@ -339,10 +367,25 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
 
     graph = None
     checkpointer_cm = None
-    try:
-        graph, checkpointer_cm = await create_graph(global_retriever=retriever)
-        print("[DEBUG] Graph created successfully")
+    max_retries = 3
 
+    for attempt in range(max_retries):
+        try:
+            graph, checkpointer_cm = await create_graph(global_retriever=retriever)
+            print("[DEBUG] Graph created successfully")
+            break
+        except Exception as e:
+            if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                print(f"[DEBUG] Database locked, retrying... (attempt {attempt + 1})")
+                import asyncio
+
+                await asyncio.sleep(1)  # Wait before retry
+                continue
+            else:
+                yield f"data: {json.dumps({'error': f'Erro ao criar grafo: {str(e)}'})}\n\n"
+                return
+
+    try:
         async for event in graph.astream(
             {"messages": [HumanMessage(content=user_input)]},
             graph_config,
@@ -362,7 +405,10 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
 
     except Exception as e:
         print(f"[DEBUG] Error in chat_generator: {e}")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        error_msg = str(e)
+        if "database is locked" in error_msg.lower():
+            error_msg = "O sistema está ocupado atualizando. Por favor, tente novamente em alguns segundos."
+        yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
     finally:
         if checkpointer_cm:
