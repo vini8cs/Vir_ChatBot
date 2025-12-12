@@ -37,6 +37,18 @@ def delete_thread_api(user_id: str, thread_id: str):
     return response.json()
 
 
+def get_thread_messages_api(thread_id: str) -> list:
+    """Call the API to get message history for a thread."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/threads/{thread_id}/messages")
+        response.raise_for_status()
+        data = response.json()
+        return data.get("messages", [])
+    except requests.exceptions.RequestException as e:
+        print(f"Error loading messages: {e}")
+        return []
+
+
 def chat_stream_api(message: str, thread_id: str, user_id: str):
     """
     Call the chat stream API and yield responses.
@@ -46,6 +58,7 @@ def chat_stream_api(message: str, thread_id: str, user_id: str):
             f"{API_BASE_URL}/chat/stream",
             json={"message": message, "thread_id": thread_id, "user_id": user_id},
             stream=True,
+            timeout=120,
         )
         response.raise_for_status()
 
@@ -64,6 +77,8 @@ def chat_stream_api(message: str, thread_id: str, user_id: str):
                             yield f"❌ Erro: {payload['error']}"
                     except json.JSONDecodeError:
                         continue
+    except requests.exceptions.Timeout:
+        yield "❌ Erro: Tempo limite excedido. O sistema pode estar ocupado."
     except requests.exceptions.RequestException as e:
         yield f"❌ Erro de conexão: {e}"
 
@@ -158,6 +173,12 @@ def start_session_data(user_id: str):
     if "messages" not in st.session_state:
         st.session_state.messages = {}
 
+    # Load messages for the selected thread if not already loaded
+    if st.session_state.selected_thread and st.session_state.selected_thread not in st.session_state.messages:
+        st.session_state.messages[st.session_state.selected_thread] = get_thread_messages_api(
+            st.session_state.selected_thread
+        )
+
     # Active background tasks: {task_id: {"name": str, "started_at": datetime}}
     if "active_tasks" not in st.session_state:
         st.session_state.active_tasks = {}
@@ -192,11 +213,11 @@ def delete_thread_and_update_state(thread_id: str):
 
 
 def select_thread(thread_id: str):
-    """Select a thread."""
+    """Select a thread and load its messages from the database."""
     st.session_state.selected_thread = thread_id
-    # Initialize messages for this thread if not exists
+    # Load messages from database if not already in session state
     if thread_id not in st.session_state.messages:
-        st.session_state.messages[thread_id] = []
+        st.session_state.messages[thread_id] = get_thread_messages_api(thread_id)
 
 
 def get_current_messages() -> list:
@@ -317,13 +338,8 @@ def render_task_progress():
             if st.button("🔄 Atualizar", key="refresh_tasks", use_container_width=True):
                 st.rerun()
 
-        # Auto-refresh using streamlit-autorefresh if available, otherwise manual
-        try:
-            from streamlit_autorefresh import st_autorefresh
-
-            st_autorefresh(interval=3000, limit=None, key="task_autorefresh")
-        except ImportError:
-            pass  # Auto-refresh not available, user must click manually
+        # NOTE: Removed st_autorefresh as it interrupts streaming chat responses
+        # Users must manually click "Atualizar" to refresh task progress
 
 
 # ==================== MAIN APP ====================

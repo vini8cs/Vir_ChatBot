@@ -58,24 +58,26 @@ TEMP_UPLOAD_DIR = "/tmp/temp_uploads"
 Path(TEMP_UPLOAD_DIR).mkdir(exist_ok=True)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Initialize SQLite with WAL mode for better concurrency
-    print("Initializing SQLite with WAL mode...")
+async def turn_wal_mode_on():
+    logging.info("Initializing SQLite with WAL mode...")
     try:
         db_dir = os.path.dirname(_.SQLITE_MEMORY_DATABASE)
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)
+        Path(db_dir).mkdir(parents=True, exist_ok=True)
 
-        conn = sqlite3.connect(_.SQLITE_MEMORY_DATABASE)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout
-        conn.close()
+        async with aiosqlite.connect(_.SQLITE_MEMORY_DATABASE) as conn:
+            await conn.execute("PRAGMA journal_mode=WAL;")
+            await conn.execute("PRAGMA busy_timeout=30000;")
         logging.info(f"SQLite WAL mode enabled for {_.SQLITE_MEMORY_DATABASE}")
     except Exception as e:
         logging.warning(f"Could not enable WAL mode: {e}")
 
-    print("Carregando VectorStore na memória...")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    await turn_wal_mode_on()
+
+    logging.info("Carregando VectorStore na memória...")
     try:
         global_resources["retriever"] = await load_global_vectorstore()
         if global_resources["retriever"]:
@@ -103,6 +105,7 @@ async def health_check():
 
 @app.post("/vectorstore/reload")
 async def reload_vectorstore():
+    """Endpoint to reload the VectorStore into memory."""
     try:
         global_resources["retriever"] = await load_global_vectorstore()
         if global_resources["retriever"]:
@@ -123,6 +126,7 @@ async def reload_vectorstore():
 async def upload_pdf(
     files: list[UploadFile] = File(..., media_type="application/pdf"),  # noqa: B008
 ):
+    """Endpoint to create or update the vectorstore based on selected PDF(s)"""
     request_id = str(uuid.uuid4())
     upload_dir = os.path.join(TEMP_UPLOAD_DIR, request_id)
     Path(upload_dir).mkdir(exist_ok=True)
@@ -171,9 +175,7 @@ async def delete_pdfs(request: DeleteFileRequest):
 @app.post("/create-vectorstore-from-folder/")
 async def create_vectorstore_from_folder_endpoint():
     """
-    Cria o vectorstore do zero a partir de uma pasta de PDFs.
-
-    - **pdf_folder**: Caminho absoluto para a pasta contendo os PDFs.
+    Create vectorstore from zero using PDF_FOLDER path in .env
     """
     task = create_vectorstore_from_folder.delay()
 
@@ -350,20 +352,78 @@ async def delete_thread(user_id: str, thread_id: str):
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
+@app.get("/threads/{thread_id}/messages")
+async def get_thread_messages(thread_id: str):
+    """
+    Get the message history for a specific thread.
+    Extracts messages from the LangGraph checkpointer.
+    """
+    sqlite_db_path = _.SQLITE_MEMORY_DATABASE
+
+    if not os.path.exists(sqlite_db_path):
+        return {"messages": []}
+
+    try:
+        async with aiosqlite.connect(sqlite_db_path) as conn:
+            # Get the latest checkpoint for this thread
+            query = """
+            SELECT checkpoint, type
+            FROM checkpoints 
+            WHERE thread_id = ?
+            ORDER BY checkpoint_id DESC
+            LIMIT 1
+            """
+            async with conn.execute(query, (str(thread_id),)) as cur:
+                row = await cur.fetchone()
+
+            if not row:
+                return {"messages": []}
+
+            checkpoint_data, checkpoint_type = row[0], row[1]
+
+            if not isinstance(checkpoint_data, bytes):
+                return {"messages": []}
+
+            # Use LangGraph's serializer to properly deserialize
+            from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+            serde = JsonPlusSerializer()
+            checkpoint = serde.loads_typed((checkpoint_type, checkpoint_data))
+
+            # Extract messages from checkpoint
+            messages = []
+            channel_values = checkpoint.get("channel_values", {})
+            msg_list = channel_values.get("messages", [])
+
+            for msg in msg_list:
+                # Messages should be proper LangChain message objects
+                if hasattr(msg, "type") and hasattr(msg, "content"):
+                    msg_type = msg.type
+                    msg_content = msg.content
+                    # Skip tool messages and empty/list content
+                    if isinstance(msg_content, list):
+                        continue
+                    if msg_type in ["human", "ai"] and msg_content:
+                        role = "user" if msg_type == "human" else "assistant"
+                        messages.append({"role": role, "content": msg_content})
+
+            return {"messages": messages}
+
+    except Exception as e:
+        logging.error(f"Error loading messages for thread {thread_id}: {e}")
+        return {"messages": []}
+
+
 async def chat_generator(user_input: str, thread_id: str, user_id: str):
     """
     Gera a resposta em streaming e garante o fechamento da conexão do banco.
     """
-    print(f"[DEBUG] chat_generator called with thread_id={thread_id}, user_id={user_id}")
-
     retriever = global_resources.get("retriever")
     if not retriever:
-        yield "data: "
-        f"{json.dumps({'error': 'VectorStore não inicializado. Por favor, crie ou recarregue o VectorStore.'})}\n\n"
+        yield f"data: {json.dumps({'error': 'VectorStore não inicializado. Por favor, crie ou recarregue o VectorStore.'})}\n\n"
         return
 
     graph_config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
-    print(f"[DEBUG] graph_config: {graph_config}")
 
     graph = None
     checkpointer_cm = None
@@ -372,14 +432,12 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
     for attempt in range(max_retries):
         try:
             graph, checkpointer_cm = await create_graph(global_retriever=retriever)
-            print("[DEBUG] Graph created successfully")
             break
         except Exception as e:
             if "database is locked" in str(e).lower() and attempt < max_retries - 1:
-                print(f"[DEBUG] Database locked, retrying... (attempt {attempt + 1})")
                 import asyncio
 
-                await asyncio.sleep(1)  # Wait before retry
+                await asyncio.sleep(1)
                 continue
             else:
                 yield f"data: {json.dumps({'error': f'Erro ao criar grafo: {str(e)}'})}\n\n"
@@ -395,16 +453,22 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
             if not messages:
                 continue
             last_msg = messages[-1]
+
+            # Check for tool calls (AI decided to use a tool)
+            if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+                continue  # Skip tool call messages, wait for final response
+
             if last_msg.type != "ai":
                 continue
-            payload = {"content": last_msg.content, "type": "ai_response"}
-            yield f"data: {json.dumps(payload)}\n\n"
 
-        print(f"[DEBUG] Stream completed for thread_id={thread_id}")
+            # Only yield if there's actual content
+            if last_msg.content:
+                payload = {"content": last_msg.content, "type": "ai_response"}
+                yield f"data: {json.dumps(payload)}\n\n"
+
         yield "data: [DONE]\n\n"
 
     except Exception as e:
-        print(f"[DEBUG] Error in chat_generator: {e}")
         error_msg = str(e)
         if "database is locked" in error_msg.lower():
             error_msg = "O sistema está ocupado atualizando. Por favor, tente novamente em alguns segundos."
@@ -413,11 +477,9 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
     finally:
         if checkpointer_cm:
             try:
-                print(f"[DEBUG] Closing checkpointer connection for thread_id={thread_id}")
                 await checkpointer_cm.__aexit__(None, None, None)
-                print("[DEBUG] Checkpointer connection closed successfully")
             except Exception as close_err:
-                print(f"Erro ao fechar conexão SQLite: {close_err}")
+                logging.error(f"Erro ao fechar conexão SQLite: {close_err}")
 
 
 @app.post("/chat/stream")

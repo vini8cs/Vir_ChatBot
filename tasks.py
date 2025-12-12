@@ -55,8 +55,8 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
                 vector_store_creator._diff_vs_cache()
             except NoNewPDFError:
                 return {
-                    "status": "Sucesso",
-                    "message": "Todos os PDFs já existem no VectorStore.",
+                    "status": "Success",
+                    "message": "All the PDF(s) already exist in Vectorstore.",
                     "current": total_steps,
                     "total": total_steps,
                     "percent": 100,
@@ -78,16 +78,16 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
         vector_store_creator._save_cache()
 
         return {
-            "status": "Sucesso",
-            "message": "VectorStore criado ou atualizado.",
+            "status": "Success",
+            "message": "VectorStore created/updated.",
             "current": total_steps,
             "total": total_steps,
             "percent": 100,
         }
 
     except Exception as e:
-        logging.info(f"Erro na tarefa Celery: {e}")
-        return {"status": "Falha", "error": str(e)}
+        logging.info(f"Erro in Celery task: {e}")
+        return {"status": "Error", "error": str(e)}
     finally:
         for file_temp in pdfs_to_add:
             if not os.path.isfile(file_temp):
@@ -151,36 +151,50 @@ def delete_pdfs_from_vectorstore(self, filenames: List[str]):
             self,
             1,
             total_steps,
-            "Iniciando",
-            f"Preparando exclusão de {len(filenames)} arquivo(s)...",
+            "Starting",
+            f"Starting process to delete {len(filenames)} file(s)...",
         )
 
         vector_store_creator = VectorStoreCreator(pdfs_to_delete=filenames)
+        if not vector_store_creator._check_chache():
+            logging.info(f"Erro in Celery task: No cache found. Try creating the vectorstor first!")
+            return {
+                "status": "Error",
+                "error": "No cache found. Try creating the vectorstor first!",
+            }
 
         update_task_progress(
             self,
             2,
             total_steps,
-            "Carregando",
-            "Carregando cache e identificando registros...",
+            "Loading",
+            "Loading cache and identifying registers",
         )
         vector_store_creator._load_cache()
         vector_store_creator.recover_deleted_pdfs_from_cache()
 
-        update_task_progress(self, 3, total_steps, "Deletando", "Removendo do VectorStore...")
+        update_task_progress(self, 3, total_steps, "Deleting", "Deleting from VectorStore...")
+
+        if not vector_store_creator._check_vectorstore_exists():
+            logging.info(f"Erro in Celery task: No vectorstore found. Try creating the vectorstor first!")
+            return {
+                "status": "Error",
+                "error": "No vectorstore found. Try creating the vectorstor first!",
+            }
+
         vector_store_creator._load_faiss_vectorstore()
         vector_store_creator.delete_uuids_from_vectorstore()
 
-        update_task_progress(self, 4, total_steps, "Finalizando", "Atualizando cache...")
+        update_task_progress(self, 4, total_steps, "Finishing", "Updating cache...")
         vector_store_creator._reformat_chache_after_deletion()
 
         return {
-            "status": "Sucesso",
-            "message": f"Arquivo(s) {filenames} deletado(s) com sucesso.",
+            "status": "Success",
+            "message": f"{len(filenames)} file(s) deleted successfully: {', '.join(filenames)}",
             "current": total_steps,
             "total": total_steps,
             "percent": 100,
         }
     except Exception as e:
-        logging.info(f"Erro na tarefa Celery: {e}")
-        return {"status": "Falha", "error": str(e)}
+        logging.info(f"Erro in Celery task: {e}")
+        return {"status": "Error", "error": str(e)}

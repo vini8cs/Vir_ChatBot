@@ -403,9 +403,8 @@ class VectorStoreCreator(Gemini):
             raise NoCacheFoundError("No cache found. Try creating the vectorstor first!")
         self._load_cache()
         self.recover_deleted_pdfs_from_cache()
-        if self._check_vectorstore_exists():
-            self._load_faiss_vectorstore()
-        else:
+        if not self._check_vectorstore_exists():
             raise NoVectorStoreFoundError("No vectorstore found. Try creating the vectorstor first!")
+        self._load_faiss_vectorstore()
         self.delete_uuids_from_vectorstore()
         self._reformat_chache_after_deletion()
