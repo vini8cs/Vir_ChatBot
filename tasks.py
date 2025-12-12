@@ -4,7 +4,13 @@ from typing import List
 
 from celery import Celery
 
-from agents.vir_chatbot.vectorstore import NoNewPDFError, VectorStoreCreator
+from agents.vir_chatbot.vectorstore import (
+    NoCacheFoundError,
+    NoNewPDFError,
+    NoVectorStoreFoundError,
+    VectorAlreadyCreatedError,
+    VectorStoreCreator,
+)
 
 app = Celery(
     "tasks",
@@ -51,16 +57,7 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
         )
         if vector_store_creator._check_chache():
             vector_store_creator._load_cache()
-            try:
-                vector_store_creator._diff_vs_cache()
-            except NoNewPDFError:
-                return {
-                    "status": "Success",
-                    "message": "All the PDF(s) already exist in Vectorstore.",
-                    "current": total_steps,
-                    "total": total_steps,
-                    "percent": 100,
-                }
+            vector_store_creator._diff_vs_cache()
 
         update_task_progress(self, 3, total_steps, "Chunking", "Chunking PDF(s) with Docling...")
         vector_store_creator._start_chunking_process()
@@ -88,6 +85,14 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
     except Exception as e:
         logging.info(f"Erro in Celery task: {e}")
         return {"status": "Error", "error": str(e)}
+    except NoNewPDFError:
+        return {
+            "status": "Success",
+            "message": "All the PDF(s) already exist in Vectorstore.",
+            "current": total_steps,
+            "total": total_steps,
+            "percent": 100,
+        }
     finally:
         for file_temp in pdfs_to_add:
             if not os.path.isfile(file_temp):
@@ -97,12 +102,13 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
 
 @app.task(bind=True)
 def create_vectorstore_from_folder(self):
-    """Cria o vectorstore do zero a partir de uma pasta de PDFs."""
     total_steps = 6
     try:
         update_task_progress(self, 1, total_steps, "Iniciando", "Buscando PDFs na pasta...")
 
         vector_store_creator = VectorStoreCreator()
+        if vector_store_creator._check_chache() or vector_store_creator._check_vectorstore_exists():
+            raise VectorAlreadyCreatedError
         vector_store_creator._find_pdf()
 
         pdf_count = len(vector_store_creator.pdf_paths)
@@ -111,24 +117,15 @@ def create_vectorstore_from_folder(self):
             2,
             total_steps,
             "Chunking",
-            f"Extraindo chunks de {pdf_count} PDF(s) com Docling...",
+            f"Chunking {pdf_count} PDF(s) with Docling...",
         )
-        vector_store_creator._chunking_documents_with_docling()
+        vector_store_creator._start_chunking_process()
 
-        update_task_progress(self, 3, total_steps, "Sumarizando", "Processando e sumarizando conteúdo...")
-        vector_store_creator._summarization_process()
-
-        update_task_progress(self, 4, total_steps, "Filtrando", "Filtrando referências...")
-        if not vector_store_creator.dont_summarize:
-            vector_store_creator._filter_reference_info()
-        else:
-            vector_store_creator.filtered_df = vector_store_creator.merged_df.copy()
-
-        update_task_progress(self, 5, total_steps, "VectorStore", "Criando VectorStore...")
+        update_task_progress(self, 3, total_steps, "VectorStore", "Creating VectorStore...")
         vector_store_creator._processing_faiss_vectorstore_data()
         vector_store_creator._save_faiss_vectorstore()
 
-        update_task_progress(self, 6, total_steps, "Finalizando", "Salvando cache...")
+        update_task_progress(self, 4, total_steps, "Finishing", "Saving cache...")
         vector_store_creator._save_cache()
 
         return {
@@ -138,7 +135,7 @@ def create_vectorstore_from_folder(self):
             "total": total_steps,
             "percent": 100,
         }
-    except Exception as e:
+    except VectorAlreadyCreatedError as e:
         logging.info(f"Erro na tarefa Celery: {e}")
         return {"status": "Falha", "error": str(e)}
 
@@ -157,11 +154,7 @@ def delete_pdfs_from_vectorstore(self, filenames: List[str]):
 
         vector_store_creator = VectorStoreCreator(pdfs_to_delete=filenames)
         if not vector_store_creator._check_chache():
-            logging.info(f"Erro in Celery task: No cache found. Try creating the vectorstor first!")
-            return {
-                "status": "Error",
-                "error": "No cache found. Try creating the vectorstor first!",
-            }
+            raise NoCacheFoundError
 
         update_task_progress(
             self,
@@ -176,11 +169,7 @@ def delete_pdfs_from_vectorstore(self, filenames: List[str]):
         update_task_progress(self, 3, total_steps, "Deleting", "Deleting from VectorStore...")
 
         if not vector_store_creator._check_vectorstore_exists():
-            logging.info(f"Erro in Celery task: No vectorstore found. Try creating the vectorstor first!")
-            return {
-                "status": "Error",
-                "error": "No vectorstore found. Try creating the vectorstor first!",
-            }
+            raise NoVectorStoreFoundError
 
         vector_store_creator._load_faiss_vectorstore()
         vector_store_creator.delete_uuids_from_vectorstore()
@@ -195,6 +184,6 @@ def delete_pdfs_from_vectorstore(self, filenames: List[str]):
             "total": total_steps,
             "percent": 100,
         }
-    except Exception as e:
+    except (NoCacheFoundError, NoVectorStoreFoundError) as e:
         logging.info(f"Erro in Celery task: {e}")
         return {"status": "Error", "error": str(e)}

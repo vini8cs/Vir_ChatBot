@@ -24,17 +24,37 @@ from tokenizer import TokenizerWrapper
 class NoNewPDFError(Exception):
     """Custom exception for no new PDF found."""
 
+    default_message = "No new PDF was found..."
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message or self.default_message)
+
 
 class NoCacheFoundError(Exception):
     """Custom exception for no cache found."""
+
+    default_message = "No matching PDFs found in cache to delete."
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message or self.default_message)
 
 
 class NoVectorStoreFoundError(Exception):
     """Custom exception for no vectorstore found."""
 
+    default_message = "No vectorstore found. Try creating the vectorstor first!"
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message or self.default_message)
+
 
 class VectorAlreadyCreatedError(Exception):
     """Custom exception for vectorstore already created."""
+
+    default_message = "Vectorstore already created."
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message or self.default_message)
 
 
 def atomic_save_vectorstore(vectorstore, target_path: str):
@@ -184,7 +204,7 @@ class VectorStoreCreator(Gemini):
         logging.info("Diffing PDFs vs Cache...")
         self.pdf_paths = [pdf_path for pdf_path in self.pdf_paths if os.path.basename(pdf_path) not in self.pdf_list]
         if len(self.pdf_paths) == 0:
-            raise NoNewPDFError("No new PDF was found...")
+            raise NoNewPDFError()
 
     def recover_deleted_pdfs_from_cache(self):
         logging.info("Recovering deleted PDFs from cache...")
@@ -195,7 +215,7 @@ class VectorStoreCreator(Gemini):
             self.cache_df["metadata"].apply(lambda x: x["filename"] in filenames_to_delete)
         ]
         if self.cache_to_delete.empty:
-            raise NoCacheFoundError("No matching PDFs found in cache to delete.")
+            raise NoCacheFoundError()
 
         self.uudis_to_remove = self.cache_to_delete["id"].unique().tolist()
         self.filtered_df = self.cache_df[~self.cache_df["id"].isin(self.uudis_to_remove)].reset_index(drop=True)
@@ -374,9 +394,9 @@ class VectorStoreCreator(Gemini):
 
     def build_vectorstore_from_zero(self):
         logging.info("Bulding vectorstore from zero...")
-        self._find_pdf()
         if self._check_chache() or self._check_vectorstore_exists():
-            raise VectorAlreadyCreatedError("Vectorstore already created.")
+            raise VectorAlreadyCreatedError()
+        self._find_pdf()
         self._start_chunking_process()
         self._processing_faiss_vectorstore_data()
         self._save_faiss_vectorstore()
@@ -400,11 +420,11 @@ class VectorStoreCreator(Gemini):
 
     def delete_pdfs(self):
         if not self._check_chache():
-            raise NoCacheFoundError("No cache found. Try creating the vectorstor first!")
+            raise NoCacheFoundError()
         self._load_cache()
         self.recover_deleted_pdfs_from_cache()
         if not self._check_vectorstore_exists():
-            raise NoVectorStoreFoundError("No vectorstore found. Try creating the vectorstor first!")
+            raise NoVectorStoreFoundError()
         self._load_faiss_vectorstore()
         self.delete_uuids_from_vectorstore()
         self._reformat_chache_after_deletion()
