@@ -2,8 +2,6 @@ import json
 import logging
 import os
 import re
-import shutil
-import tempfile
 import uuid
 
 import pandas as pd
@@ -55,49 +53,6 @@ class VectorAlreadyCreatedError(Exception):
 
     def __init__(self, message: str | None = None):
         super().__init__(message or self.default_message)
-
-
-def atomic_save_vectorstore(vectorstore, target_path: str):
-    """
-    Save vectorstore atomically to prevent corruption during concurrent reads.
-
-    1. Save to a temporary directory
-    2. Remove the old directory
-    3. Rename temp to target (atomic on same filesystem)
-    """
-    # Create temp directory in the same parent to ensure same filesystem
-    parent_dir = os.path.dirname(target_path)
-    temp_dir = tempfile.mkdtemp(dir=parent_dir, prefix=".vectorstore_temp_")
-
-    try:
-        logging.info(f"Saving vectorstore to temp directory: {temp_dir}")
-        vectorstore.save_local(temp_dir)
-
-        # Backup old directory if exists
-        backup_dir = None
-        if os.path.exists(target_path):
-            backup_dir = target_path + ".backup"
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir)
-            os.rename(target_path, backup_dir)
-
-        # Atomic rename
-        os.rename(temp_dir, target_path)
-        logging.info(f"Vectorstore saved atomically to: {target_path}")
-
-        # Remove backup
-        if backup_dir and os.path.exists(backup_dir):
-            shutil.rmtree(backup_dir)
-
-    except Exception as e:
-        logging.error(f"Error during atomic save: {e}")
-        # Cleanup temp dir if it still exists
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-        # Restore backup if we had one
-        if backup_dir and os.path.exists(backup_dir) and not os.path.exists(target_path):
-            os.rename(backup_dir, target_path)
-        raise
 
 
 class VectorStoreCreator(Gemini):
@@ -229,7 +184,7 @@ class VectorStoreCreator(Gemini):
         except Exception as e:
             logging.error(f"Error deleting UUIDs from vectorstore: {e}")
         logging.info("Saving vectorstore after deletions...")
-        atomic_save_vectorstore(self.vectorstore, self.vectorstore_path)
+        self.vectorstore.save_local(self.vectorstore_path)
 
     def _find_pdf(self):
         logging.info("Searching for PDF files...")
@@ -380,7 +335,7 @@ class VectorStoreCreator(Gemini):
             metadatas=self.metadatas_for_vectorstore,
             ids=self.ids_for_vectorstore,
         )
-        atomic_save_vectorstore(self.vectorstore, self.vectorstore_path)
+        self.vectorstore.save_local(self.vectorstore_path)
 
     def _save_faiss_vectorstore(self):
         logging.info("Saving vectorstore...")
@@ -390,7 +345,7 @@ class VectorStoreCreator(Gemini):
             metadatas=self.metadatas_for_vectorstore,
             ids=self.ids_for_vectorstore,
         )
-        atomic_save_vectorstore(self.vectorstore, self.vectorstore_path)
+        self.vectorstore.save_local(self.vectorstore_path)
 
     def build_vectorstore_from_zero(self):
         logging.info("Bulding vectorstore from zero...")
