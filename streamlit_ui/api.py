@@ -1,8 +1,8 @@
+import asyncio
 import json
 import logging
 import os
 import shutil
-import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,9 +10,11 @@ from typing import List
 
 import aiofiles
 import aiosqlite
+import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from pydantic import BaseModel, Field
 
 import config as _
@@ -25,7 +27,6 @@ from tasks import (
 )
 
 
-# Filtro para não logar requisições do healthcheck
 class HealthCheckFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return "/health" not in record.getMessage()
@@ -77,21 +78,21 @@ async def lifespan(app: FastAPI):
 
     await turn_wal_mode_on()
 
-    logging.info("Carregando VectorStore na memória...")
+    logging.info("Loading VectorStore into memory...")
     try:
         global_resources["retriever"] = await load_global_vectorstore()
         if global_resources["retriever"]:
-            logging.info("VectorStore load sucessfully!")
+            logging.info("VectorStore loaded successfully!")
         else:
-            logging.info("VectorStore não encontrado. Crie um primeiro.")
+            logging.info("VectorStore not found. Create one first.")
     except Exception as e:
-        logging.error(f"Erro ao carregar VectorStore: {e}. Tente criar primeiramente.")
+        logging.error(f"Error loading VectorStore: {e}. Try creating it first.")
         global_resources["retriever"] = None
 
     yield
 
     global_resources.clear()
-    logging.info("Recursos limpos.")
+    logging.info("Resources cleared.")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -111,15 +112,15 @@ async def reload_vectorstore():
         if global_resources["retriever"]:
             return {
                 "status": "success",
-                "message": "VectorStore recarregado com sucesso.",
+                "message": "VectorStore reloaded successfully.",
             }
         return {
             "status": "warning",
-            "message": "VectorStore não encontrado. Crie um primeiro.",
+            "message": "VectorStore not found. Create one first.",
         }
     except Exception as e:
-        logging.info(f"Erro ao recarregar VectorStore: {e}")
-        return {"status": "error", "message": f"Erro ao recarregar: {e}"}
+        logging.info(f"Error reloading VectorStore: {e}")
+        return {"status": "error", "message": "Error reloading VectorStore"}
 
 
 @app.post("/create-vectorstore-based-on-selected-pdfs/")
@@ -140,14 +141,14 @@ async def upload_pdf(
                 await out_file.write(content)
             pdf_files_to_upload.append(file_path)
 
-    except Exception as e:
-        shutil.rmtree(upload_dir)
-        raise HTTPException(status_code=500, detail=f"Erro ao salvar arquivos: {e}")
+    except Exception:
+        await asyncio.to_thread(shutil.rmtree, upload_dir)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
     task = create_vectorstore_uploaded_pdfs.delay(pdf_files_to_upload)
 
     return {
-        "message": "A criação do VectorStore foi iniciada em segundo plano.",
+        "message": "VectorStore creation started in background.",
         "task_id": task.id,
         "upload_directory": str(upload_dir),
     }
@@ -161,7 +162,7 @@ async def delete_pdfs(request: DeleteFileRequest):
     if not request.filenames:
         raise HTTPException(status_code=400, detail="The list of files is empty.")
 
-    print(f"Requesting deletion for: {request.filenames}")
+    logging.info(f"Requesting deletion for: {request.filenames}")
 
     task = delete_pdfs_from_vectorstore.delay(request.filenames)
 
@@ -180,9 +181,17 @@ async def create_vectorstore_from_folder_endpoint():
     task = create_vectorstore_from_folder.delay()
 
     return {
-        "message": "A criação do VectorStore do zero foi iniciada em segundo plano.",
+        "message": "VectorStore creation from folder started in background.",
         "task_id": task.id,
     }
+
+
+def get_filenames_from_metadata(metadata_str: str) -> List[str]:
+    try:
+        data = json.loads(metadata_str)
+        return data.get("filename")
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return None
 
 
 @app.get("/pdfs/list")
@@ -190,9 +199,6 @@ async def list_pdfs():
     """
     List all PDFs in the vectorstore cache.
     """
-    import pandas as pd
-
-    # CACHE_FOLDER is a directory, the actual file is cache.csv inside it
     cache_path = os.path.join(_.CACHE_FOLDER, "cache.csv")
 
     if not os.path.exists(cache_path):
@@ -200,21 +206,14 @@ async def list_pdfs():
 
     try:
         df = pd.read_csv(cache_path)
-        if "metadata" in df.columns:
-            import json
+        if "metadata" not in df.columns:
+            return {"pdfs": []}
 
-            filenames = set()
-            for metadata_str in df["metadata"]:
-                try:
-                    metadata = json.loads(metadata_str)
-                    if "filename" in metadata:
-                        filenames.add(metadata["filename"])
-                except (json.JSONDecodeError, TypeError):
-                    continue
-            return {"pdfs": sorted(filenames)}
-        return {"pdfs": []}
+        filenames = df["metadata"].apply(get_filenames_from_metadata, axis=1).dropna().unique()
+        return {"pdfs": sorted(filenames)}
+
     except Exception as e:
-        print(f"Error reading cache: {e}")
+        logging.error(f"Error reading cache: {e}")
         return {"pdfs": []}
 
 
@@ -234,7 +233,6 @@ async def get_task_status(task_id: str):
         }
 
         if task_result.status == "PROGRESS":
-            # Task is in progress
             info = task_result.info or {}
             response.update(
                 {
@@ -246,7 +244,6 @@ async def get_task_status(task_id: str):
                 }
             )
         elif task_result.status == "SUCCESS":
-            # Task completed successfully
             result = task_result.result or {}
             response.update(
                 {
@@ -255,7 +252,6 @@ async def get_task_status(task_id: str):
                 }
             )
         elif task_result.status == "FAILURE":
-            # Task failed
             response.update(
                 {
                     "error": (str(task_result.result) if task_result.result else "Unknown error"),
@@ -263,19 +259,18 @@ async def get_task_status(task_id: str):
                 }
             )
         elif task_result.status == "PENDING":
-            # Task is pending
             response.update(
                 {
                     "percent": 0,
-                    "step": "Aguardando",
-                    "details": "Tarefa na fila...",
+                    "step": "Waiting",
+                    "details": "Task queued...",
                 }
             )
 
         return response
 
     except Exception as e:
-        print(f"Error getting task status: {e}")
+        logging.error(f"Error getting task status: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting task status: {e}")
 
 
@@ -292,13 +287,14 @@ async def create_thread(request: CreateThreadRequest):
 
 @app.get("/threads/{user_id}")
 async def get_user_threads(user_id: str):
-    sqlite_db_path = _.SQLITE_MEMORY_DATABASE
-
-    if not os.path.exists(sqlite_db_path):
+    """
+    Get all threads associated with a specific user.
+    """
+    if not os.path.exists(_.SQLITE_MEMORY_DATABASE):
         return {"threads": []}
 
     try:
-        async with aiosqlite.connect(sqlite_db_path) as conn:
+        async with aiosqlite.connect(_.SQLITE_MEMORY_DATABASE) as conn:
             query = """
             SELECT DISTINCT thread_id 
             FROM checkpoints 
@@ -310,46 +306,45 @@ async def get_user_threads(user_id: str):
             return {"threads": [{"thread_id": r[0]} for r in rows]}
 
     except Exception as e:
-        print(f"Database error: {e}")
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+        logging.error(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @app.delete("/threads/{user_id}/{thread_id}")
 async def delete_thread(user_id: str, thread_id: str):
-    sqlite_db_path = _.SQLITE_MEMORY_DATABASE
-
-    if not os.path.exists(sqlite_db_path):
+    """Delete a specific thread and its associated messages."""
+    if not os.path.exists(_.SQLITE_MEMORY_DATABASE):
         raise HTTPException(status_code=404, detail="Database not found")
 
     try:
-        async with aiosqlite.connect(sqlite_db_path) as conn:
+        async with aiosqlite.connect(_.SQLITE_MEMORY_DATABASE) as conn:
             query = """
-            SELECT COUNT(*) FROM checkpoints 
+            SELECT 1 FROM checkpoints 
             WHERE thread_id = ? 
             AND json_extract(CAST(metadata AS TEXT), '$.user_id') = ?
-            """  # noqa: W291
+            LIMIT 1
+            """  # noqa W291
             async with conn.execute(query, (str(thread_id), str(user_id))) as cur:
                 row = await cur.fetchone()
-                count = row[0] if row else 0
 
-            if count == 0:
+            if not row:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Thread {thread_id} not found for user {user_id}",
+                    detail="Thread not found or access denied",
                 )
 
-            # Delete the thread
             await conn.execute("DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),))
-            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (str(thread_id),))
-            await conn.commit()
 
+            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (str(thread_id),))
+
+            await conn.commit()
             return {"message": f"Thread {thread_id} deleted successfully"}
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Database error: {e}")
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+        logging.error(f"CRITICAL DB ERROR: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @app.get("/threads/{thread_id}/messages")
@@ -358,21 +353,18 @@ async def get_thread_messages(thread_id: str):
     Get the message history for a specific thread.
     Extracts messages from the LangGraph checkpointer.
     """
-    sqlite_db_path = _.SQLITE_MEMORY_DATABASE
-
-    if not os.path.exists(sqlite_db_path):
+    if not os.path.exists(_.SQLITE_MEMORY_DATABASE):
         return {"messages": []}
 
     try:
-        async with aiosqlite.connect(sqlite_db_path) as conn:
-            # Get the latest checkpoint for this thread
+        async with aiosqlite.connect(_.SQLITE_MEMORY_DATABASE) as conn:
             query = """
             SELECT checkpoint, type
             FROM checkpoints 
             WHERE thread_id = ?
             ORDER BY checkpoint_id DESC
             LIMIT 1
-            """
+            """  # noqa W291
             async with conn.execute(query, (str(thread_id),)) as cur:
                 row = await cur.fetchone()
 
@@ -384,28 +376,23 @@ async def get_thread_messages(thread_id: str):
             if not isinstance(checkpoint_data, bytes):
                 return {"messages": []}
 
-            # Use LangGraph's serializer to properly deserialize
-            from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-
             serde = JsonPlusSerializer()
             checkpoint = serde.loads_typed((checkpoint_type, checkpoint_data))
 
-            # Extract messages from checkpoint
             messages = []
             channel_values = checkpoint.get("channel_values", {})
             msg_list = channel_values.get("messages", [])
 
             for msg in msg_list:
-                # Messages should be proper LangChain message objects
-                if hasattr(msg, "type") and hasattr(msg, "content"):
-                    msg_type = msg.type
-                    msg_content = msg.content
-                    # Skip tool messages and empty/list content
-                    if isinstance(msg_content, list):
-                        continue
-                    if msg_type in ["human", "ai"] and msg_content:
-                        role = "user" if msg_type == "human" else "assistant"
-                        messages.append({"role": role, "content": msg_content})
+                if not (hasattr(msg, "type") and hasattr(msg, "content")):
+                    continue
+                msg_type = msg.type
+                msg_content = msg.content
+                if isinstance(msg_content, list):
+                    continue
+                if msg_type in ["human", "ai"] and msg_content:
+                    role = "user" if msg_type == "human" else "assistant"
+                    messages.append({"role": role, "content": msg_content})
 
             return {"messages": messages}
 
@@ -414,34 +401,36 @@ async def get_thread_messages(thread_id: str):
         return {"messages": []}
 
 
+async def create_graph_retriever(retriever, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return await create_graph(global_retriever=retriever)
+        except Exception as e:
+            if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                await asyncio.sleep(3)
+                continue
+            return None
+    return None
+
+
 async def chat_generator(user_input: str, thread_id: str, user_id: str):
     """
-    Gera a resposta em streaming e garante o fechamento da conexão do banco.
+    Generates the streaming response and ensures the database connection is closed.
     """
     retriever = global_resources.get("retriever")
     if not retriever:
-        yield f"data: {json.dumps({'error': 'VectorStore não inicializado. Por favor, crie ou recarregue o VectorStore.'})}\n\n"
+        yield f"data: {json.dumps({'error': 'VectorStore not initialized. Please create or reload the VectorStore.'})}\n\n"  # noqa E501
         return
 
+    result = await create_graph_retriever(retriever, 3)
+
+    if result is None:
+        yield f"data: {json.dumps({'error': 'Error creating graph'})}\n\n"
+        return
+
+    graph, checkpointer_cm = result
+
     graph_config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
-
-    graph = None
-    checkpointer_cm = None
-    max_retries = 3
-
-    for attempt in range(max_retries):
-        try:
-            graph, checkpointer_cm = await create_graph(global_retriever=retriever)
-            break
-        except Exception as e:
-            if "database is locked" in str(e).lower() and attempt < max_retries - 1:
-                import asyncio
-
-                await asyncio.sleep(1)
-                continue
-            else:
-                yield f"data: {json.dumps({'error': f'Erro ao criar grafo: {str(e)}'})}\n\n"
-                return
 
     try:
         async for event in graph.astream(
@@ -471,7 +460,7 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
     except Exception as e:
         error_msg = str(e)
         if "database is locked" in error_msg.lower():
-            error_msg = "O sistema está ocupado atualizando. Por favor, tente novamente em alguns segundos."
+            error_msg = "The system is busy updating. Please try again in a few seconds."
         yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
     finally:
@@ -479,7 +468,7 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
             try:
                 await checkpointer_cm.__aexit__(None, None, None)
             except Exception as close_err:
-                logging.error(f"Erro ao fechar conexão SQLite: {close_err}")
+                logging.error(f"Error closing SQLite connection: {close_err}")
 
 
 @app.post("/chat/stream")
