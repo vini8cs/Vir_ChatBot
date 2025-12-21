@@ -4,10 +4,8 @@ import os
 import requests
 import streamlit as st
 
-# URL da API - pode ser configurada via variável de ambiente
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-# Page config
 st.set_page_config(page_title="Vir ChatBot", page_icon="🤖", layout="wide")
 
 
@@ -19,7 +17,7 @@ def get_user_threads_api(user_id: str) -> list:
         data = response.json()
         return data.get("threads", [])
     except requests.exceptions.RequestException as e:
-        st.error(f"Erro ao buscar threads: {e}")
+        st.error(f"Error fetching threads: {e}")
         return []
 
 
@@ -63,27 +61,26 @@ def chat_stream_api(message: str, thread_id: str, user_id: str):
         response.raise_for_status()
 
         for line in response.iter_lines():
-            if line:
-                line_str = line.decode("utf-8")
-                if line_str.startswith("data: "):
-                    data = line_str[6:]  # Remove "data: " prefix
-                    if data == "[DONE]":
-                        break
-                    try:
-                        payload = json.loads(data)
-                        if "content" in payload:
-                            yield payload["content"]
-                        elif "error" in payload:
-                            yield f"❌ Erro: {payload['error']}"
-                    except json.JSONDecodeError:
-                        continue
+            if not line:
+                continue
+            line_str = line.decode("utf-8")
+            if not line_str.startswith("data: "):
+                continue
+
+            data = line_str[6:]
+            if data == "[DONE]":
+                break
+            try:
+                payload = json.loads(data)
+                if "content" in payload:
+                    yield payload["content"]
+                yield f"❌ Error: {payload['error']}"
+            except json.JSONDecodeError:
+                continue
     except requests.exceptions.Timeout:
-        yield "❌ Erro: Tempo limite excedido. O sistema pode estar ocupado."
+        yield "❌ Error: Timeout exceeded. The system may be busy."
     except requests.exceptions.RequestException as e:
-        yield f"❌ Erro de conexão: {e}"
-
-
-# ==================== VECTORSTORE API FUNCTIONS ====================
+        yield f"❌ Connection error: {e}"
 
 
 def list_pdfs_api() -> list:
@@ -94,7 +91,7 @@ def list_pdfs_api() -> list:
         data = response.json()
         return data.get("pdfs", [])
     except requests.exceptions.RequestException as e:
-        st.error(f"Erro ao buscar PDFs: {e}")
+        st.error(f"Error fetching PDFs: {e}")
         return []
 
 
@@ -169,17 +166,14 @@ def start_session_data(user_id: str):
         else:
             st.session_state.selected_thread = None
 
-    # Messages for each thread: {thread_id: [{"role": "user/assistant", "content": "..."}]}
     if "messages" not in st.session_state:
         st.session_state.messages = {}
 
-    # Load messages for the selected thread if not already loaded
     if st.session_state.selected_thread and st.session_state.selected_thread not in st.session_state.messages:
         st.session_state.messages[st.session_state.selected_thread] = get_thread_messages_api(
             st.session_state.selected_thread
         )
 
-    # Active background tasks: {task_id: {"name": str, "started_at": datetime}}
     if "active_tasks" not in st.session_state:
         st.session_state.active_tasks = {}
 
@@ -199,11 +193,9 @@ def delete_thread_and_update_state(thread_id: str):
     delete_thread_api(st.session_state.user_id, thread_id)
     st.session_state.threads_id.remove(thread_id)
 
-    # Remove messages for this thread
     if thread_id in st.session_state.messages:
         del st.session_state.messages[thread_id]
 
-    # Select another thread if available
     if st.session_state.threads_id:
         st.session_state.selected_thread = st.session_state.threads_id[-1]
     else:
@@ -215,7 +207,6 @@ def delete_thread_and_update_state(thread_id: str):
 def select_thread(thread_id: str):
     """Select a thread and load its messages from the database."""
     st.session_state.selected_thread = thread_id
-    # Load messages from database if not already in session state
     if thread_id not in st.session_state.messages:
         st.session_state.messages[thread_id] = get_thread_messages_api(thread_id)
 
@@ -258,7 +249,7 @@ def render_task_progress():
     if not st.session_state.active_tasks:
         return
 
-    st.subheader("⏳ Tarefas em Andamento")
+    st.subheader("⏳ Tasks running...")
 
     tasks_to_remove = []
     has_running_tasks = False
@@ -267,7 +258,7 @@ def render_task_progress():
         status = get_task_status_api(task_id)
 
         if "error" in status and status.get("status") == "ERROR":
-            st.error(f"❌ Erro ao verificar tarefa: {status['error']}")
+            st.error(f"❌ Error to verify task: {status['error']}")
             tasks_to_remove.append(task_id)
             continue
 
@@ -281,7 +272,7 @@ def render_task_progress():
                 st.markdown(f"**{task_name}**")
 
                 if task_status == "PENDING":
-                    st.progress(0, text="⏳ Aguardando na fila...")
+                    st.progress(0, text="⏳ Task queued...")
                     has_running_tasks = True
 
                 elif task_status == "PROGRESS":
@@ -296,23 +287,22 @@ def render_task_progress():
 
                 elif task_status == "SUCCESS":
                     result = status.get("result", {})
-                    message = result.get("message", "Concluído com sucesso!")
+                    message = result.get("message", "Finished successfully!")
                     result_status = result.get("status", "")
 
-                    if result_status == "Falha":
-                        st.error(f"❌ Falha: {result.get('error', 'Erro desconhecido')}")
+                    if result_status == "Failure":
+                        st.error(f"❌ FAILURE: {result.get('error', 'Unknown Error')}")
                     else:
                         st.success(f"✅ {message}")
-                        # Reload VectorStore if it was a creation/upload task
-                        if "Upload" in task_name or "Criar" in task_name:
+                        if "Upload" in task_name or "Create" in task_name:
                             reload_result = reload_vectorstore_api()
                             if reload_result.get("status") == "success":
-                                st.info("🔄 VectorStore recarregado na memória.")
+                                st.info("🔄 VectorStore reloaded into memory.")
                     tasks_to_remove.append(task_id)
 
                 elif task_status == "FAILURE":
-                    error = status.get("error", "Erro desconhecido")
-                    st.error(f"❌ Falha: {error}")
+                    error = status.get("error", "Unknown error")
+                    st.error(f"❌ FAILURE: {error}")
                     tasks_to_remove.append(task_id)
 
                 else:
@@ -333,13 +323,13 @@ def render_task_progress():
     if has_running_tasks:
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.caption("💡 Clique em 'Atualizar' para ver o progresso mais recente")
+            st.caption("💡 Click 'Refresh' to see the latest progress")
         with col2:
-            if st.button("🔄 Atualizar", key="refresh_tasks", use_container_width=True):
+            if st.button("🔄 Refresh", key="refresh_tasks", use_container_width=True):
                 st.rerun()
 
         # NOTE: Removed st_autorefresh as it interrupts streaming chat responses
-        # Users must manually click "Atualizar" to refresh task progress
+        # Users must manually click "Refresh" to refresh task progress
 
 
 # ==================== MAIN APP ====================
@@ -355,11 +345,11 @@ with st.sidebar:
     st.caption(f"👤 User: {st.session_state.user_id}")
 
     # New thread button
-    if st.button("➕ Nova Conversa", use_container_width=True):
+    if st.button("➕ New Conversation", use_container_width=True):
         create_new_thread(st.session_state.user_id)
 
     st.divider()
-    st.subheader("💬 Conversas")
+    st.subheader("💬 Conversations")
 
     # List threads
     if st.session_state.threads_id:
@@ -384,66 +374,65 @@ with st.sidebar:
                 if st.button("🗑️", key=f"delete_{thread_id}"):
                     delete_thread_and_update_state(thread_id)
     else:
-        st.info("Nenhuma conversa ainda. Clique em 'Nova Conversa' para começar!")
+        st.info("No conversations yet. Click 'New Conversation' to start!")
 
     # ==================== VECTORSTORE MANAGEMENT ====================
     st.divider()
-    st.subheader("📚 Gerenciar VectorStore")
+    st.subheader("📚 Manage VectorStore")
 
     # Reload VectorStore button
-    if st.button("🔄 Recarregar VectorStore", use_container_width=True, key="reload_vs"):
-        with st.spinner("Recarregando VectorStore..."):
+    if st.button("🔄 Reload VectorStore", use_container_width=True, key="reload_vs"):
+        with st.spinner("Reloading VectorStore..."):
             result = reload_vectorstore_api()
             if result.get("status") == "success":
                 st.success(f"✅ {result.get('message')}")
             elif result.get("status") == "warning":
                 st.warning(f"⚠️ {result.get('message')}")
             else:
-                st.error(f"❌ {result.get('message', 'Erro desconhecido')}")
+                st.error(f"❌ {result.get('message', 'Unknown error')}")
 
     # Expander for creating vectorstore
-    with st.expander("➕ Criar VectorStore", expanded=False):
-        st.markdown("**Opção 1: Upload de PDFs**")
+    with st.expander("➕ Create VectorStore", expanded=False):
+        st.markdown("**Option 1: Upload PDFs**")
         uploaded_files = st.file_uploader(
-            "Selecione os PDFs",
+            "Select PDFs",
             type=["pdf"],
             accept_multiple_files=True,
             key="pdf_uploader",
         )
 
-        if uploaded_files:
-            if st.button("📤 Enviar e Criar VectorStore", use_container_width=True):
-                with st.spinner("Enviando PDFs..."):
-                    result = upload_pdfs_api(uploaded_files)
-                    if "error" in result:
-                        st.error(f"Erro: {result['error']}")
-                    else:
-                        st.success(f"✅ {result.get('message', 'PDFs enviados!')}")
-                        task_id = result.get("task_id")
-                        if task_id:
-                            add_active_task(task_id, f"Upload de {len(uploaded_files)} PDF(s)")
-                            st.rerun()
-
-        st.markdown("---")
-        st.markdown("**Opção 2: Criar da Pasta**")
-        st.caption("Cria o VectorStore a partir da pasta de PDFs configurada.")
-
-        if st.button("📁 Criar VectorStore da Pasta", use_container_width=True):
-            with st.spinner("Iniciando criação..."):
-                result = create_vectorstore_from_folder_api()
+        if uploaded_files and st.button("📤 Upload and Create VectorStore", use_container_width=True):
+            with st.spinner("Uploading PDFs..."):
+                result = upload_pdfs_api(uploaded_files)
                 if "error" in result:
-                    st.error(f"Erro: {result['error']}")
+                    st.error(f"Error: {result['error']}")
                 else:
-                    st.success(f"✅ {result.get('message', 'Processo iniciado!')}")
+                    st.success(f"✅ {result.get('message', 'PDFs uploaded!')}")
                     task_id = result.get("task_id")
                     if task_id:
-                        add_active_task(task_id, "Criar VectorStore da Pasta")
+                        add_active_task(task_id, f"Upload of {len(uploaded_files)} PDF(s)")
+                        st.rerun()
+
+        st.markdown("---")
+        st.markdown("**Option 2: Create from Folder**")
+        st.caption("Creates the VectorStore from the configured PDFs folder.")
+
+        if st.button("📁 Create VectorStore from Folder", use_container_width=True):
+            with st.spinner("Starting creation..."):
+                result = create_vectorstore_from_folder_api()
+                if "error" in result:
+                    st.error(f"Error: {result['error']}")
+                else:
+                    st.success(f"✅ {result.get('message', 'Process started!')}")
+                    task_id = result.get("task_id")
+                    if task_id:
+                        add_active_task(task_id, "Create VectorStore from Folder")
                         st.rerun()
 
     # Expander for managing PDFs in vectorstore
-    with st.expander("📋 PDFs no VectorStore", expanded=False):
+    with st.expander("📋 PDFs in VectorStore", expanded=False):
         # Refresh button
-        if st.button("🔄 Atualizar Lista", use_container_width=True, key="refresh_pdfs"):
+        if st.button("🔄 Refresh List", use_container_width=True, key="refresh_pdfs"):
             st.session_state.pdf_list = list_pdfs_api()
             st.rerun()
 
@@ -457,72 +446,63 @@ with st.sidebar:
         pdf_list = st.session_state.pdf_list
 
         if pdf_list:
-            st.markdown(f"**{len(pdf_list)} PDF(s) encontrado(s)**")
+            st.markdown(f"**{len(pdf_list)} PDF(s) found**")
 
             # Search filter
-            search_term = st.text_input("🔍 Buscar PDF", key="pdf_search")
+            search_term = st.text_input("🔍 Search PDF", key="pdf_search")
 
             # Filter PDFs based on search
             filtered_pdfs = [pdf for pdf in pdf_list if search_term.lower() in pdf.lower()] if search_term else pdf_list
 
             # Multiselect for PDFs
             selected = st.multiselect(
-                "Selecione PDFs para excluir:",
+                "Select PDFs to delete:",
                 options=filtered_pdfs,
                 default=[],
                 key="pdf_multiselect",
             )
 
             if selected:
-                st.warning(f"⚠️ {len(selected)} PDF(s) selecionado(s) para exclusão")
+                st.warning(f"⚠️ {len(selected)} PDF(s) selected for deletion")
 
-                if st.button("🗑️ Excluir Selecionados", type="primary", use_container_width=True):
-                    with st.spinner("Excluindo PDFs..."):
+                if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
+                    with st.spinner("Deleting PDFs..."):
                         result = delete_pdfs_api(selected)
                         if "error" in result:
-                            st.error(f"Erro: {result['error']}")
+                            st.error(f"Error: {result['error']}")
                         else:
-                            st.success(f"✅ {result.get('message', 'PDFs excluídos!')}")
+                            st.success(f"✅ {result.get('message', 'PDFs deleted!')}")
                             task_id = result.get("task_id")
                             if task_id:
-                                add_active_task(task_id, f"Excluir {len(selected)} PDF(s)")
-                            # Refresh the list
+                                add_active_task(task_id, f"Delete {len(selected)} PDF(s)")
                             st.session_state.pdf_list = list_pdfs_api()
                             st.rerun()
         else:
-            st.info("Nenhum PDF encontrado no VectorStore.")
+            st.info("No PDFs found in VectorStore.")
 
-    # ==================== TASK PROGRESS ====================
     if st.session_state.active_tasks:
         st.divider()
         render_task_progress()
 
-# Main chat area
 if st.session_state.selected_thread:
-    st.header(f"💬 Conversa: {st.session_state.selected_thread[:8]}...")
+    st.header(f"💬 Conversation: {st.session_state.selected_thread[:8]}...")
 
-    # Display chat messages
     chat_container = st.container()
     with chat_container:
         for message in get_current_messages():
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-    # Chat input
-    if prompt := st.chat_input("Digite sua mensagem..."):
-        # Add user message
+    if prompt := st.chat_input("Type your message..."):
         add_message("user", prompt)
 
-        # Display user message
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Get AI response with streaming
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
 
-            # Stream the response
             for chunk in chat_stream_api(
                 message=prompt,
                 thread_id=st.session_state.selected_thread,
@@ -539,18 +519,18 @@ if st.session_state.selected_thread:
 
 else:
     # No thread selected
-    st.title("🤖 Bem-vindo ao Vir ChatBot!")
+    st.title("🤖 Welcome to Vir ChatBot!")
     st.markdown(
         """
-    ### Como usar:
-    1. Clique em **"Nova Conversa"** no menu lateral para criar um novo chat
-    2. Digite sua mensagem na caixa de texto abaixo
-    3. O assistente irá responder baseado no conhecimento disponível    
+    ### How to use:
+    1. Click **"New Conversation"** in the sidebar to create a new chat
+    2. Type your message in the text box below
+    3. The assistant will respond based on the available knowledge
     ---
-    *Selecione ou crie uma conversa para começar!*
+    *Select or create a conversation to start!*
     """
     )
 
     # Quick start button
-    if st.button("🚀 Começar Nova Conversa", type="primary"):
+    if st.button("🚀 Start New Conversation", type="primary"):
         create_new_thread(st.session_state.user_id)

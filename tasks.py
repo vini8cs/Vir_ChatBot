@@ -83,7 +83,7 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
         }
 
     except Exception as e:
-        logging.info(f"Erro in Celery task: {e}")
+        logging.info(f"Error in Celery task: {e}")
         return {"status": "Error", "error": str(e)}
     except NoNewPDFError:
         return {
@@ -104,7 +104,7 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
 def create_vectorstore_from_folder(self):
     total_steps = 6
     try:
-        update_task_progress(self, 1, total_steps, "Iniciando", "Buscando PDFs na pasta...")
+        update_task_progress(self, 1, total_steps, "Starting", "Searching for PDFs in folder...")
 
         vector_store_creator = VectorStoreCreator()
         if vector_store_creator._check_chache() or vector_store_creator._check_vectorstore_exists():
@@ -129,15 +129,15 @@ def create_vectorstore_from_folder(self):
         vector_store_creator._save_cache()
 
         return {
-            "status": "Sucesso",
-            "message": f"VectorStore criado do zero com {pdf_count} PDF(s).",
+            "status": "Success",
+            "message": f"VectorStore created from scratch with {pdf_count} PDF(s).",
             "current": total_steps,
             "total": total_steps,
             "percent": 100,
         }
     except VectorAlreadyCreatedError as e:
-        logging.info(f"Erro na tarefa Celery: {e}")
-        return {"status": "Falha", "error": str(e)}
+        logging.info(f"Error in Celery task: {e}")
+        return {"status": "Failure", "error": str(e)}
 
 
 @app.task(bind=True)
@@ -185,5 +185,5 @@ def delete_pdfs_from_vectorstore(self, filenames: List[str]):
             "percent": 100,
         }
     except (NoCacheFoundError, NoVectorStoreFoundError) as e:
-        logging.info(f"Erro in Celery task: {e}")
+        logging.info(f"Error in Celery task: {e}")
         return {"status": "Error", "error": str(e)}

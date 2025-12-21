@@ -443,14 +443,12 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
                 continue
             last_msg = messages[-1]
 
-            # Check for tool calls (AI decided to use a tool)
             if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                continue  # Skip tool call messages, wait for final response
+                continue
 
             if last_msg.type != "ai":
                 continue
 
-            # Only yield if there's actual content
             if last_msg.content:
                 payload = {"content": last_msg.content, "type": "ai_response"}
                 yield f"data: {json.dumps(payload)}\n\n"
@@ -459,6 +457,7 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
 
     except Exception as e:
         error_msg = str(e)
+        logging.error(f"Error during chat generation: {error_msg}")
         if "database is locked" in error_msg.lower():
             error_msg = "The system is busy updating. Please try again in a few seconds."
         yield f"data: {json.dumps({'error': error_msg})}\n\n"
@@ -473,6 +472,7 @@ async def chat_generator(user_input: str, thread_id: str, user_id: str):
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
+    """Call the chat generator and return a streaming response."""
     return StreamingResponse(
         chat_generator(request.message, request.thread_id, request.user_id),
         media_type="text/event-stream",
