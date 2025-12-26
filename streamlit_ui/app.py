@@ -74,7 +74,8 @@ def chat_stream_api(message: str, thread_id: str, user_id: str):
                 payload = json.loads(data)
                 if "content" in payload:
                     yield payload["content"]
-                yield f"❌ Error: {payload['error']}"
+                else:
+                    yield f"❌ Error: {payload['error']}"
             except json.JSONDecodeError:
                 continue
     except requests.exceptions.Timeout:

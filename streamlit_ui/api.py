@@ -209,7 +209,7 @@ async def list_pdfs():
         if "metadata" not in df.columns:
             return {"pdfs": []}
 
-        filenames = df["metadata"].apply(get_filenames_from_metadata, axis=1).dropna().unique()
+        filenames = df["metadata"].apply(get_filenames_from_metadata).dropna().unique()
         return {"pdfs": sorted(filenames)}
 
     except Exception as e:
@@ -306,6 +306,8 @@ async def get_user_threads(user_id: str):
             return {"threads": [{"thread_id": r[0]} for r in rows]}
 
     except Exception as e:
+        if "no such table" in str(e).lower():
+            return {"threads": []}
         logging.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -343,6 +345,8 @@ async def delete_thread(user_id: str, thread_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        if "no such table" in str(e).lower():
+            raise HTTPException(status_code=404, detail="Thread not found or access denied")
         logging.error(f"CRITICAL DB ERROR: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -397,6 +401,8 @@ async def get_thread_messages(thread_id: str):
             return {"messages": messages}
 
     except Exception as e:
+        if "no such table" in str(e).lower():
+            return {"messages": []}
         logging.error(f"Error loading messages for thread {thread_id}: {e}")
         return {"messages": []}
 
