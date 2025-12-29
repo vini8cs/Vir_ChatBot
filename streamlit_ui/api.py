@@ -27,6 +27,36 @@ from tasks import (
 )
 
 
+class RuntimeConfig(BaseModel):
+    """Runtime configuration that can be modified via API."""
+
+    gemini_model: str = _.GEMINI_MODEL
+    embedding_model: str = _.EMBEDDING_MODEL
+    temperature: float = _.TEMPERATURE
+    max_output_tokens: int = _.MAX_OUTPUT_TOKENS
+    token_size: int = _.TOKEN_SIZE
+    max_retries: int = _.MAX_RETRIES
+    tokenizer_model: str = _.TOKENIZER_MODEL
+    threads: int = _.THREADS
+    summarize: bool = _.SUMMARIZE
+    retriever_limit: int = _.RETRIEVER_LIMIT
+
+
+class ConfigUpdateRequest(BaseModel):
+    """Request model for updating configuration."""
+
+    gemini_model: str | None = None
+    embedding_model: str | None = None
+    temperature: float | None = None
+    max_output_tokens: int | None = None
+    token_size: int | None = None
+    max_retries: int | None = None
+    tokenizer_model: str | None = None
+    threads: int | None = None
+    summarize: bool | None = None
+    retriever_limit: int | None = None
+
+
 class HealthCheckFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return "/health" not in record.getMessage()
@@ -55,6 +85,7 @@ class ThreadResponse(BaseModel):
 
 
 global_resources = {}
+runtime_config: RuntimeConfig = RuntimeConfig()  # Configuração em memória
 TEMP_UPLOAD_DIR = "/tmp/temp_uploads"
 Path(TEMP_UPLOAD_DIR).mkdir(exist_ok=True)
 
@@ -102,6 +133,78 @@ app = FastAPI(lifespan=lifespan)
 async def health_check():
     """Health check endpoint for container orchestration."""
     return {"status": "healthy"}
+
+
+@app.get("/config")
+async def get_config():
+    """Get current runtime configuration settings."""
+    return runtime_config.model_dump()
+
+
+@app.put("/config")
+async def update_config(request: ConfigUpdateRequest):
+    """
+    Update runtime configuration. Only provided fields will be updated.
+    Changes take effect immediately for new chat sessions.
+    """
+    global runtime_config
+
+    update_data = request.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No configuration fields provided")
+
+    current_config = runtime_config.model_dump()
+    current_config.update(update_data)
+    runtime_config = RuntimeConfig(**current_config)
+
+    return {
+        "status": "success",
+        "message": "Configuration updated successfully",
+        "config": runtime_config.model_dump(),
+    }
+
+
+@app.post("/config/reset")
+async def reset_config():
+    """
+    Reset configuration to default values from config.py.
+    Optionally reload the vectorstore if retriever_limit changed.
+    """
+    global runtime_config
+    runtime_config = RuntimeConfig()
+
+    return {
+        "status": "success",
+        "message": "Configuration reset to defaults",
+        "config": runtime_config.model_dump(),
+    }
+
+
+@app.post("/config/reset-and-reload")
+async def reset_config_and_reload():
+    """
+    Reset configuration to defaults AND reload the vectorstore.
+    Use this when you want a complete fresh start.
+    """
+    global runtime_config
+    runtime_config = RuntimeConfig()
+
+    try:
+        global_resources["retriever"] = await load_global_vectorstore()
+        return {
+            "status": "success",
+            "message": "Configuration reset and VectorStore reloaded",
+            "config": runtime_config.model_dump(),
+            "vectorstore_loaded": global_resources["retriever"] is not None,
+        }
+    except Exception as e:
+        logging.error(f"Error reloading VectorStore: {e}")
+        return {
+            "status": "partial",
+            "message": "Configuration reset but VectorStore reload failed",
+            "config": runtime_config.model_dump(),
+            "error": str(e),
+        }
 
 
 @app.post("/vectorstore/reload")
@@ -407,10 +510,16 @@ async def get_thread_messages(thread_id: str):
         return {"messages": []}
 
 
-async def create_graph_retriever(retriever, max_retries=3):
+async def create_graph_retriever(retriever, config: RuntimeConfig, max_retries=3):
+    """Create graph using runtime configuration."""
     for attempt in range(max_retries):
         try:
-            return await create_graph(global_retriever=retriever)
+            return await create_graph(
+                global_retriever=retriever,
+                llm_model=config.gemini_model,
+                temperature=config.temperature,
+                max_retries=config.max_retries,
+            )
         except Exception as e:
             if "database is locked" in str(e).lower() and attempt < max_retries - 1:
                 await asyncio.sleep(3)
@@ -422,13 +531,14 @@ async def create_graph_retriever(retriever, max_retries=3):
 async def chat_generator(user_input: str, thread_id: str, user_id: str):
     """
     Generates the streaming response and ensures the database connection is closed.
+    Uses runtime_config for LLM settings.
     """
     retriever = global_resources.get("retriever")
     if not retriever:
         yield f"data: {json.dumps({'error': 'VectorStore not initialized. Please create or reload the VectorStore.'})}\n\n"  # noqa E501
         return
 
-    result = await create_graph_retriever(retriever, 3)
+    result = await create_graph_retriever(retriever, runtime_config, 3)
 
     if result is None:
         yield f"data: {json.dumps({'error': 'Error creating graph'})}\n\n"

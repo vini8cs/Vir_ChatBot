@@ -68,7 +68,6 @@ class VectorStoreCreator(Gemini):
         temperature: float = _.TEMPERATURE,
         max_output_tokens: int = _.MAX_OUTPUT_TOKENS,
         token_size: int = _.TOKEN_SIZE,
-        languages: list[str] = _.LANGUAGES,
         max_retries: int = _.MAX_RETRIES,
         tokenizer_model: str = _.TOKENIZER_MODEL,
         threads: int = _.THREADS,
@@ -87,7 +86,6 @@ class VectorStoreCreator(Gemini):
         self.pdf_folder = pdf_folder
         self.embedding_model = embedding_model
         self.token_size = token_size
-        self.languages = languages
         self.cache = os.path.join(cache, "cache.csv")
         self.vectorstore_path = vectorstore_path
         self.tokenizer_model = tokenizer_model

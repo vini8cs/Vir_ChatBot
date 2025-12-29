@@ -5,6 +5,16 @@ import requests
 import streamlit as st
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+GEMINI_MODELS = [
+    "gemini-3-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+]
+
 
 st.set_page_config(page_title="Vir ChatBot", page_icon="🤖", layout="wide")
 
@@ -134,6 +144,37 @@ def reload_vectorstore_api() -> dict:
     """Reload the VectorStore into memory after creation/update."""
     try:
         response = requests.post(f"{API_BASE_URL}/vectorstore/reload")
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
+
+
+def get_config_api() -> dict:
+    """Get current runtime configuration."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/config")
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
+
+
+def update_config_api(config_updates: dict) -> dict:
+    """Update runtime configuration."""
+    try:
+        response = requests.put(f"{API_BASE_URL}/config", json=config_updates)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
+
+
+def reset_config_api(reload_vectorstore: bool = False) -> dict:
+    """Reset configuration to defaults."""
+    try:
+        endpoint = "/config/reset-and-reload" if reload_vectorstore else "/config/reset"
+        response = requests.post(f"{API_BASE_URL}{endpoint}")
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -481,6 +522,133 @@ with st.sidebar:
         else:
             st.info("No PDFs found in VectorStore.")
 
+    # ==================== CONFIGURATION MANAGEMENT ====================
+    st.divider()
+    st.subheader("⚙️ Configuration")
+
+    with st.expander("🔧 LLM Settings", expanded=False):
+        if "runtime_config" not in st.session_state:
+            st.session_state.runtime_config = get_config_api()
+
+        config = st.session_state.runtime_config
+
+        if "error" in config:
+            st.error(f"Error loading config: {config['error']}")
+        else:
+            current_model = config.get("gemini_model", "gemini-2.5-flash")
+            model_index = GEMINI_MODELS.index(current_model) if current_model in GEMINI_MODELS else 0
+            new_model = st.selectbox(
+                "🤖 Gemini Model",
+                options=GEMINI_MODELS,
+                index=model_index,
+                key="config_model",
+            )
+
+            new_temperature = st.slider(
+                "🌡️ Temperature",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(config.get("temperature", 0.1)),
+                step=0.1,
+                key="config_temperature",
+                help="Higher = more creative, Lower = more focused",
+            )
+
+            new_max_tokens = st.number_input(
+                "📝 Max Output Tokens",
+                min_value=256,
+                max_value=8192,
+                value=int(config.get("max_output_tokens", 2048)),
+                step=256,
+                key="config_max_tokens",
+            )
+
+            new_retriever_limit = st.number_input(
+                "🔍 Retriever Limit (k)",
+                min_value=1,
+                max_value=20,
+                value=int(config.get("retriever_limit", 5)),
+                step=1,
+                key="config_retriever_limit",
+                help="Number of documents to retrieve",
+            )
+
+            new_max_retries = st.number_input(
+                "🔄 Max Retries",
+                min_value=1,
+                max_value=10,
+                value=int(config.get("max_retries", 3)),
+                step=1,
+                key="config_max_retries",
+            )
+
+            new_summarize = st.toggle(
+                "📋 Summarize Context",
+                value=bool(config.get("summarize", False)),
+                key="config_summarize",
+            )
+
+            st.divider()
+
+            config_changed = (
+                new_model != config.get("gemini_model")
+                or new_temperature != config.get("temperature")
+                or new_max_tokens != config.get("max_output_tokens")
+                or new_retriever_limit != config.get("retriever_limit")
+                or new_max_retries != config.get("max_retries")
+                or new_summarize != config.get("summarize")
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button(
+                    "💾 Save",
+                    use_container_width=True,
+                    type="primary" if config_changed else "secondary",
+                    disabled=not config_changed,
+                ):
+                    updates = {
+                        "gemini_model": new_model,
+                        "temperature": new_temperature,
+                        "max_output_tokens": new_max_tokens,
+                        "retriever_limit": new_retriever_limit,
+                        "max_retries": new_max_retries,
+                        "summarize": new_summarize,
+                    }
+                    result = update_config_api(updates)
+                    if "error" in result:
+                        st.error(f"Error: {result['error']}")
+                    else:
+                        st.success("✅ Configuration saved!")
+                        st.session_state.runtime_config = result.get("config", get_config_api())
+                        st.rerun()
+
+            with col2:
+                if st.button("🔄 Reset Defaults", use_container_width=True):
+                    result = reset_config_api(reload_vectorstore=False)
+                    if "error" in result:
+                        st.error(f"Error: {result['error']}")
+                    else:
+                        st.success("✅ Configuration reset!")
+                        new_config = result.get("config", get_config_api())
+                        st.session_state.runtime_config = new_config
+                        # Clear widget keys to force refresh with new values
+                        for key in [
+                            "config_model",
+                            "config_temperature",
+                            "config_max_tokens",
+                            "config_retriever_limit",
+                            "config_max_retries",
+                            "config_summarize",
+                        ]:
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        st.rerun()
+
+            if config_changed:
+                st.info("💡 You have unsaved changes")
+
     if st.session_state.active_tasks:
         st.divider()
         render_task_progress()
@@ -526,7 +694,7 @@ else:
     ### How to use:
     1. Click **"New Conversation"** in the sidebar to create a new chat
     2. Type your message in the text box below
-    3. The assistant will respond based on the available knowledge
+    3. The assistant will respond based on the available virology knowledge
     ---
     *Select or create a conversation to start!*
     """

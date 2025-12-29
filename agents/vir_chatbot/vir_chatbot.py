@@ -51,7 +51,7 @@ class Vir_ChatBot:
         return builder.compile(checkpointer=self.checkpointer)
 
 
-async def load_global_vectorstore():
+async def load_global_vectorstore(retriever_limit: int | None = None):
     vectorstore_index = os.path.join(_.VECTORSTORE_PATH, "index.faiss")
     if not os.path.exists(vectorstore_index):
         logging.info(f"VectorStore not found at {_.VECTORSTORE_PATH}. It will be created when PDFs are added.")
@@ -65,10 +65,16 @@ async def load_global_vectorstore():
         embeddings,
         allow_dangerous_deserialization=True,
     )
-    return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": _.RETRIEVER_LIMIT})
+    k = retriever_limit if retriever_limit is not None else _.RETRIEVER_LIMIT
+    return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": k})
 
 
-async def create_graph(global_retriever):
+async def create_graph(
+    global_retriever,
+    llm_model: str | None = None,
+    temperature: float | None = None,
+    max_retries: int | None = None,
+):
     # Use WAL mode connection string for better concurrency
     db_path = _.SQLITE_MEMORY_DATABASE
     conn_string = f"file:{db_path}?mode=rwc"
@@ -83,9 +89,9 @@ async def create_graph(global_retriever):
 
     bot = Vir_ChatBot(
         retriever=global_retriever,
-        llm_model=_.GEMINI_MODEL,
-        temperature=_.TEMPERATURE,
-        max_retries=_.MAX_RETRIES,
+        llm_model=llm_model if llm_model is not None else _.GEMINI_MODEL,
+        temperature=temperature if temperature is not None else _.TEMPERATURE,
+        max_retries=max_retries if max_retries is not None else _.MAX_RETRIES,
         checkpointer=checkpointer,
     )
 
