@@ -5,6 +5,6 @@ description = "Streamlit UI for Vir ChatBot"
 requires-python = ">=3.12"
 dependencies = [
     "streamlit==1.51.0",
-    "streamlit-autorefresh>=1.0.1",
-    "requests>=2.31.0",
+    "requests==2.31.0",
+    "asyncio==4.0.0"
 ]

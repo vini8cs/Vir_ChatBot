@@ -1,3 +1,4 @@
+# import asyncio
 import json
 import os
 
@@ -219,6 +220,9 @@ def start_session_data(user_id: str):
     if "active_tasks" not in st.session_state:
         st.session_state.active_tasks = {}
 
+    if "runtime_config" not in st.session_state:
+        st.session_state.runtime_config = get_config_api()
+
 
 def create_new_thread(user_id: str):
     """Create a new thread and update session state."""
@@ -286,6 +290,42 @@ def remove_active_task(task_id: str):
         del st.session_state.active_tasks[task_id]
 
 
+def create_pending_task():
+    st.progress(0, text="⏳ Task queued...")
+    return True
+
+
+def create_progress_task(status):
+    percent = status.get("percent", 0)
+    step = status.get("step", "")
+    details = status.get("details", "")
+    current = status.get("current", 0)
+    total = status.get("total", 0)
+
+    st.progress(percent / 100, text=f"🔄 {step}: {details} ({current}/{total})")
+    return True
+
+
+def create_success_task(status, task_name):
+    result = status.get("result", {})
+    message = result.get("message", "Finished successfully!")
+    result_status = result.get("status", "")
+
+    if result_status == "Failure":
+        st.error(f"❌ FAILURE: {result.get('error', 'Unknown Error')}")
+    else:
+        st.success(f"✅ {message}")
+        if "Upload" in task_name or "Create" in task_name:
+            reload_result = reload_vectorstore_api()
+            if reload_result.get("status") == "success":
+                st.info("🔄 VectorStore reloaded into memory.")
+
+
+def create_failure_task(status):
+    error = status.get("error", "Unknown error")
+    st.error(f"❌ FAILURE: {error}")
+
+
 def render_task_progress():
     """Render progress bars for all active tasks."""
     if not st.session_state.active_tasks:
@@ -295,6 +335,31 @@ def render_task_progress():
 
     tasks_to_remove = []
     has_running_tasks = False
+
+    def _handle_pending(status, task_name, task_id):
+        return create_pending_task(), False
+
+    def _handle_progress(status, task_name, task_id):
+        return create_progress_task(status), False
+
+    def _handle_success(status, task_name, task_id):
+        create_success_task(status, task_name)
+        return False, True
+
+    def _handle_failure(status, task_name, task_id):
+        create_failure_task(status)
+        return False, True
+
+    def _handle_unknown(status, task_name, task_id):
+        st.warning(f"⚠️ Status: {status.get('status', 'UNKNOWN')}")
+        return True, False
+
+    STATUS_HANDLERS = {
+        "PENDING": _handle_pending,
+        "PROGRESS": _handle_progress,
+        "SUCCESS": _handle_success,
+        "FAILURE": _handle_failure,
+    }
 
     for task_id, task_info in list(st.session_state.active_tasks.items()):
         status = get_task_status_api(task_id)
@@ -313,55 +378,22 @@ def render_task_progress():
             with col1:
                 st.markdown(f"**{task_name}**")
 
-                if task_status == "PENDING":
-                    st.progress(0, text="⏳ Task queued...")
-                    has_running_tasks = True
+                handler = STATUS_HANDLERS.get(task_status, _handle_unknown)
+                has_running, remove_flag = handler(status, task_name, task_id)
+                has_running_tasks = has_running_tasks or has_running
 
-                elif task_status == "PROGRESS":
-                    percent = status.get("percent", 0)
-                    step = status.get("step", "")
-                    details = status.get("details", "")
-                    current = status.get("current", 0)
-                    total = status.get("total", 0)
-
-                    st.progress(percent / 100, text=f"🔄 {step}: {details} ({current}/{total})")
-                    has_running_tasks = True
-
-                elif task_status == "SUCCESS":
-                    result = status.get("result", {})
-                    message = result.get("message", "Finished successfully!")
-                    result_status = result.get("status", "")
-
-                    if result_status == "Failure":
-                        st.error(f"❌ FAILURE: {result.get('error', 'Unknown Error')}")
-                    else:
-                        st.success(f"✅ {message}")
-                        if "Upload" in task_name or "Create" in task_name:
-                            reload_result = reload_vectorstore_api()
-                            if reload_result.get("status") == "success":
-                                st.info("🔄 VectorStore reloaded into memory.")
+                if remove_flag:
                     tasks_to_remove.append(task_id)
-
-                elif task_status == "FAILURE":
-                    error = status.get("error", "Unknown error")
-                    st.error(f"❌ FAILURE: {error}")
-                    tasks_to_remove.append(task_id)
-
-                else:
-                    st.warning(f"⚠️ Status: {task_status}")
-                    has_running_tasks = True
 
             with col2:
-                if task_status not in ["SUCCESS", "FAILURE"]:
+                if not remove_flag:
                     st.caption(f"ID: {task_id[:8]}...")
 
         st.divider()
 
-    # Remove completed tasks
     for task_id in tasks_to_remove:
         remove_active_task(task_id)
 
-    # Auto-refresh button for running tasks
     if has_running_tasks:
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -372,6 +404,129 @@ def render_task_progress():
 
         # NOTE: Removed st_autorefresh as it interrupts streaming chat responses
         # Users must manually click "Refresh" to refresh task progress
+
+
+def model_selection(config, key="config_model"):
+    current_model = config.get("gemini_model", "gemini-2.5-flash")
+    model_index = GEMINI_MODELS.index(current_model) if current_model in GEMINI_MODELS else 0
+    return st.selectbox(
+        "🤖 Gemini Model",
+        options=GEMINI_MODELS,
+        index=model_index,
+        key=key,
+    )
+
+
+def temperature_slider(config, key="config_temperature"):
+    return st.slider(
+        "🌡️ Temperature",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(config.get("temperature", 0.1)),
+        step=0.1,
+        key=key,
+        help="Higher = more creative, Lower = more focused",
+    )
+
+
+def max_tokens_input(config, key="config_max_tokens"):
+    return st.number_input(
+        "📝 Max Output Tokens",
+        min_value=256,
+        max_value=8192,
+        value=int(config.get("max_output_tokens", 2048)),
+        step=256,
+        key=key,
+    )
+
+
+def retriever_limit_input(config, key="config_retriever_limit"):
+    return st.number_input(
+        "🔍 Retriever Limit (k)",
+        min_value=1,
+        max_value=20,
+        value=int(config.get("retriever_limit", 5)),
+        step=1,
+        key=key,
+        help="Number of documents to retrieve",
+    )
+
+
+def max_retries_input(config, key="config_max_retries"):
+    return st.number_input(
+        "🔄 Max Retries",
+        min_value=1,
+        max_value=10,
+        value=int(config.get("max_retries", 3)),
+        step=1,
+        key=key,
+    )
+
+
+def summarize_toggle(config, key="config_summarize"):
+    return st.toggle(
+        "📋 Summarize Context",
+        value=bool(config.get("summarize", False)),
+        key=key,
+    )
+
+
+def make_reset_config_callback(keys_prefix: str = "config"):
+    """Factory that returns a reset callback for the given key prefix."""
+
+    def callback():
+        result = reset_config_api(reload_vectorstore=False)
+        if "error" in result:
+            st.session_state[f"{keys_prefix}_reset_error"] = result["error"]
+        else:
+            new_config = get_config_api()
+            st.session_state.runtime_config = new_config
+
+            st.session_state[f"{keys_prefix}_model"] = new_config.get("gemini_model", "gemini-2.5-flash")
+            st.session_state[f"{keys_prefix}_temperature"] = float(new_config.get("temperature", 0.1))
+            st.session_state[f"{keys_prefix}_max_tokens"] = int(new_config.get("max_output_tokens", 2048))
+            st.session_state[f"{keys_prefix}_retriever_limit"] = int(new_config.get("retriever_limit", 5))
+            st.session_state[f"{keys_prefix}_max_retries"] = int(new_config.get("max_retries", 3))
+            st.session_state[f"{keys_prefix}_summarize"] = bool(new_config.get("summarize", False))
+            st.session_state[f"{keys_prefix}_reset_success"] = True
+
+    return callback
+
+
+def run_save_config(config_changed, updates, key="save_config"):
+    if st.button(
+        "💾 Save",
+        use_container_width=True,
+        type="primary" if config_changed else "secondary",
+        disabled=not config_changed,
+        key=key,
+    ):
+        result = update_config_api(updates)
+        if "error" in result:
+            st.error(f"Error: {result['error']}")
+        else:
+            st.success("✅ Configuration saved!")
+            st.session_state.runtime_config = result.get("config", get_config_api())
+            st.rerun()
+
+
+def run_reset_config(key: str = "reset_config", keys_prefix: str = "config"):
+    st.button(
+        "🔄 Reset Defaults",
+        use_container_width=True,
+        on_click=make_reset_config_callback(keys_prefix),
+        key=key,
+    )
+
+    error_key = f"{keys_prefix}_reset_error"
+    success_key = f"{keys_prefix}_reset_success"
+
+    if st.session_state.get(error_key):
+        st.error(f"Error: {st.session_state[error_key]}")
+        del st.session_state[error_key]
+    if st.session_state.get(success_key):
+        st.success("✅ Configuration reset!")
+        del st.session_state[success_key]
 
 
 # ==================== MAIN APP ====================
@@ -471,6 +626,35 @@ with st.sidebar:
                         add_active_task(task_id, "Create VectorStore from Folder")
                         st.rerun()
 
+        st.markdown("---")
+        st.markdown("**VectorStore Settings**")
+        st.caption("Define if the summarization of context with AI should be enabled during VectorStore creation.")
+
+        config = st.session_state.runtime_config
+        if "error" in config:
+            st.error(f"Error loading config: {config['error']}")
+        else:
+            new_model = model_selection(config, key="vs_config_model")
+            new_summarize = summarize_toggle(config, key="vs_config_summarize")
+
+            config_changed = new_model != config.get("gemini_model") or new_summarize != config.get("summarize")
+
+            updates = {
+                "gemini_model": new_model,
+                "summarize": new_summarize,
+            }
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                run_save_config(config_changed, updates, key="vs_save_config")
+
+            with col2:
+                run_reset_config(key="vs_reset_config", keys_prefix="vs_config")
+
+            if config_changed:
+                st.info("💡 You have unsaved changes")
+
     # Expander for managing PDFs in vectorstore
     with st.expander("📋 PDFs in VectorStore", expanded=False):
         # Refresh button
@@ -527,66 +711,16 @@ with st.sidebar:
     st.subheader("⚙️ Configuration")
 
     with st.expander("🔧 LLM Settings", expanded=False):
-        if "runtime_config" not in st.session_state:
-            st.session_state.runtime_config = get_config_api()
-
         config = st.session_state.runtime_config
 
         if "error" in config:
             st.error(f"Error loading config: {config['error']}")
         else:
-            current_model = config.get("gemini_model", "gemini-2.5-flash")
-            model_index = GEMINI_MODELS.index(current_model) if current_model in GEMINI_MODELS else 0
-            new_model = st.selectbox(
-                "🤖 Gemini Model",
-                options=GEMINI_MODELS,
-                index=model_index,
-                key="config_model",
-            )
-
-            new_temperature = st.slider(
-                "🌡️ Temperature",
-                min_value=0.0,
-                max_value=1.0,
-                value=float(config.get("temperature", 0.1)),
-                step=0.1,
-                key="config_temperature",
-                help="Higher = more creative, Lower = more focused",
-            )
-
-            new_max_tokens = st.number_input(
-                "📝 Max Output Tokens",
-                min_value=256,
-                max_value=8192,
-                value=int(config.get("max_output_tokens", 2048)),
-                step=256,
-                key="config_max_tokens",
-            )
-
-            new_retriever_limit = st.number_input(
-                "🔍 Retriever Limit (k)",
-                min_value=1,
-                max_value=20,
-                value=int(config.get("retriever_limit", 5)),
-                step=1,
-                key="config_retriever_limit",
-                help="Number of documents to retrieve",
-            )
-
-            new_max_retries = st.number_input(
-                "🔄 Max Retries",
-                min_value=1,
-                max_value=10,
-                value=int(config.get("max_retries", 3)),
-                step=1,
-                key="config_max_retries",
-            )
-
-            new_summarize = st.toggle(
-                "📋 Summarize Context",
-                value=bool(config.get("summarize", False)),
-                key="config_summarize",
-            )
+            new_model = model_selection(config)
+            new_temperature = temperature_slider(config)
+            new_max_tokens = max_tokens_input(config)
+            new_retriever_limit = retriever_limit_input(config)
+            new_max_retries = max_retries_input(config)
 
             st.divider()
 
@@ -596,55 +730,23 @@ with st.sidebar:
                 or new_max_tokens != config.get("max_output_tokens")
                 or new_retriever_limit != config.get("retriever_limit")
                 or new_max_retries != config.get("max_retries")
-                or new_summarize != config.get("summarize")
             )
+
+            updates = {
+                "gemini_model": new_model,
+                "temperature": new_temperature,
+                "max_output_tokens": new_max_tokens,
+                "retriever_limit": new_retriever_limit,
+                "max_retries": new_max_retries,
+            }
 
             col1, col2 = st.columns(2)
 
             with col1:
-                if st.button(
-                    "💾 Save",
-                    use_container_width=True,
-                    type="primary" if config_changed else "secondary",
-                    disabled=not config_changed,
-                ):
-                    updates = {
-                        "gemini_model": new_model,
-                        "temperature": new_temperature,
-                        "max_output_tokens": new_max_tokens,
-                        "retriever_limit": new_retriever_limit,
-                        "max_retries": new_max_retries,
-                        "summarize": new_summarize,
-                    }
-                    result = update_config_api(updates)
-                    if "error" in result:
-                        st.error(f"Error: {result['error']}")
-                    else:
-                        st.success("✅ Configuration saved!")
-                        st.session_state.runtime_config = result.get("config", get_config_api())
-                        st.rerun()
+                run_save_config(config_changed, updates)
 
             with col2:
-                if st.button("🔄 Reset Defaults", use_container_width=True):
-                    result = reset_config_api(reload_vectorstore=False)
-                    if "error" in result:
-                        st.error(f"Error: {result['error']}")
-                    else:
-                        st.success("✅ Configuration reset!")
-                        new_config = result.get("config", get_config_api())
-                        st.session_state.runtime_config = new_config
-                        # Clear widget keys to force refresh with new values
-                        for key in [
-                            "config_model",
-                            "config_temperature",
-                            "config_max_tokens",
-                            "config_retriever_limit",
-                            "config_max_retries",
-                            "config_summarize",
-                        ]:
-                            if key in st.session_state:
-                                del st.session_state[key]
-                        st.rerun()
+                run_reset_config()
 
             if config_changed:
                 st.info("💡 You have unsaved changes")
@@ -703,3 +805,6 @@ else:
     # Quick start button
     if st.button("🚀 Start New Conversation", type="primary"):
         create_new_thread(st.session_state.user_id)
+
+# if __name__ == "__main__":
+#     asyncio.run(main())
