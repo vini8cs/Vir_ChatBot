@@ -1,14 +1,16 @@
 import asyncio
 import json
 import os
+from typing import Any, Coroutine
 
 import httpx
 import streamlit as st
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
 GEMINI_MODELS = [
-    "gemini-3-pro-preview",
-    "gemini-3-flash-preview",
+    # "gemini-3-pro-preview",
+    # "gemini-3-flash-preview",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.5-pro",
@@ -91,35 +93,37 @@ async def chat_stream_api(message: str, thread_id: str, user_id: str):
     url = f"{API_BASE_URL}/chat/stream"
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
+        async with (
+            httpx.AsyncClient(timeout=120.0) as client,
+            client.stream(
                 "POST",
                 url,
                 json={"message": message, "thread_id": thread_id, "user_id": user_id},
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
+            ) as response,
+        ):
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
 
-                    if not line.startswith("data: "):
-                        continue
+                if not line.startswith("data: "):
+                    continue
 
-                    data = line[6:]
+                data = line[6:]
 
-                    if data == "[DONE]":
-                        break
+                if data == "[DONE]":
+                    break
 
-                    try:
-                        payload = json.loads(data)
-                        if "content" in payload:
-                            yield payload["content"]
-                        else:
-                            error_msg = payload.get("error", "Unknown error")
-                            yield f"❌ Error: {error_msg}"
+                try:
+                    payload = json.loads(data)
+                    if "content" in payload:
+                        yield payload["content"]
+                    else:
+                        error_msg = payload.get("error", "Unknown error")
+                        yield f"❌ Error: {error_msg}"
 
-                    except json.JSONDecodeError:
-                        continue
+                except json.JSONDecodeError:
+                    continue
 
     except httpx.TimeoutException:
         yield "❌ Error: Timeout exceeded. The system may be busy."
@@ -247,6 +251,14 @@ async def get_task_status_api(task_id: str) -> dict:
             return {"error": str(e), "status": "ERROR"}
 
 
+async def gather_tasks(names: list[str], tasks: list[Coroutine[Any, Any, Any]]) -> dict:
+    task_objs = {}
+    async with asyncio.TaskGroup() as tg:
+        for name, coro in zip(names, tasks, strict=False):
+            task_objs[name] = tg.create_task(coro)
+    return {name: task.result() for name, task in task_objs.items()}
+
+
 async def start_session_data(user_id: str):
     """Initialize session state data with parallel fetching."""
 
@@ -276,8 +288,7 @@ async def start_session_data(user_id: str):
 
     mapping = {}
     if tasks:
-        results = await asyncio.gather(*tasks)
-        mapping = dict(zip(names, results))
+        mapping = await gather_tasks(names, tasks)
 
     threads_result = mapping.get("threads")
     config_result = mapping.get("config")
@@ -296,6 +307,12 @@ async def start_session_data(user_id: str):
             st.session_state.selected_thread
         )
 
+    if "active_tasks" not in st.session_state:
+        st.session_state.active_tasks = {}
+
+    if "runtime_config" not in st.session_state:
+        st.session_state.runtime_config = await get_config_api()
+
 
 async def create_new_thread(user_id: str):
     """Create a new thread and update session state."""
@@ -307,9 +324,9 @@ async def create_new_thread(user_id: str):
     st.rerun()
 
 
-def delete_thread_and_update_state(thread_id: str):
+async def delete_thread_and_update_state(thread_id: str):
     """Delete a thread and update the session state."""
-    delete_thread_api(st.session_state.user_id, thread_id)
+    await delete_thread_api(st.session_state.user_id, thread_id)
     st.session_state.threads_id.remove(thread_id)
 
     if thread_id in st.session_state.messages:
@@ -323,11 +340,11 @@ def delete_thread_and_update_state(thread_id: str):
     st.rerun()
 
 
-def select_thread(thread_id: str):
+async def select_thread(thread_id: str):
     """Select a thread and load its messages from the database."""
     st.session_state.selected_thread = thread_id
     if thread_id not in st.session_state.messages:
-        st.session_state.messages[thread_id] = get_thread_messages_api(thread_id)
+        st.session_state.messages[thread_id] = await get_thread_messages_api(thread_id)
 
 
 def get_current_messages() -> list:
@@ -480,8 +497,6 @@ def render_task_progress():
 
 
 def model_selection(config=None, key="config_model"):
-    if config is None:
-        config = st.session_state.get("runtime_config", {})
     current_model = config.get("gemini_model", "gemini-2.5-flash")
     model_index = GEMINI_MODELS.index(current_model) if current_model in GEMINI_MODELS else 0
     return st.selectbox(
@@ -493,8 +508,6 @@ def model_selection(config=None, key="config_model"):
 
 
 def temperature_slider(config=None, key="config_temperature"):
-    if config is None:
-        config = st.session_state.get("runtime_config", {})
     return st.slider(
         "🌡️ Temperature",
         min_value=0.0,
@@ -507,8 +520,6 @@ def temperature_slider(config=None, key="config_temperature"):
 
 
 def max_tokens_input(config=None, key="config_max_tokens"):
-    if config is None:
-        config = st.session_state.get("runtime_config", {})
     return st.number_input(
         "📝 Max Output Tokens",
         min_value=256,
@@ -520,8 +531,6 @@ def max_tokens_input(config=None, key="config_max_tokens"):
 
 
 def retriever_limit_input(config=None, key="config_retriever_limit"):
-    if config is None:
-        config = st.session_state.get("runtime_config", {})
     return st.number_input(
         "🔍 Retriever Limit (k)",
         min_value=1,
@@ -534,8 +543,6 @@ def retriever_limit_input(config=None, key="config_retriever_limit"):
 
 
 def max_retries_input(config=None, key="config_max_retries"):
-    if config is None:
-        config = st.session_state.get("runtime_config", {})
     return st.number_input(
         "🔄 Max Retries",
         min_value=1,
@@ -547,8 +554,6 @@ def max_retries_input(config=None, key="config_max_retries"):
 
 
 def summarize_toggle(config=None, key="config_summarize"):
-    if config is None:
-        config = st.session_state.get("runtime_config", {})
     return st.toggle(
         "📋 Summarize Context",
         value=bool(config.get("summarize", False)),
@@ -573,17 +578,15 @@ async def run_save_config(config_changed, updates, key="save_config"):
             st.rerun()
 
 
-async def run_reset_config(key: str = "reset_config", keys_prefix: str = "config"):
-    if st.button("🔄 Reset Defaults", use_container_width=True, key=key):
-        with st.spinner("Resetting configuration..."):
-            result = await reset_config_api(reload_vectorstore=False)
-            if "error" in result:
-                st.session_state[f"{keys_prefix}_reset_error"] = result["error"]
-            else:
-                new_config = await get_config_api()
-                st.session_state.runtime_config = new_config
-                st.session_state[f"{keys_prefix}_reset_success"] = True
-                st.rerun()
+def run_reset_config(key: str = "reset_config", keys_prefix: str = "config"):
+    """Render a Reset button. The on-click schedules the async reset."""
+
+    st.button(
+        "🔄 Reset Defaults",
+        use_container_width=True,
+        on_click=make_reset_config_callback(keys_prefix),
+        key=key,
+    )
 
     error_key = f"{keys_prefix}_reset_error"
     success_key = f"{keys_prefix}_reset_success"
@@ -594,6 +597,68 @@ async def run_reset_config(key: str = "reset_config", keys_prefix: str = "config
     if st.session_state.get(success_key):
         st.success("✅ Configuration reset!")
         del st.session_state[success_key]
+
+
+def make_reset_config_callback(keys_prefix: str = "config"):
+    """Return a synchronous callback that schedules the async reset.
+
+    The returned function can be used with Streamlit's `on_click`. It will
+    schedule the async `reset_config_api` flow using the running loop when
+    available, otherwise it will run it to completion.
+    """
+
+    def _schedule_reset():
+        async def _run():
+            result = await reset_config_api(reload_vectorstore=False)
+            if "error" in result:
+                st.session_state[f"{keys_prefix}_reset_error"] = result["error"]
+                return
+            new_config = await get_config_api()
+            st.session_state.runtime_config = new_config
+
+            st.session_state[f"{keys_prefix}_model"] = new_config.get("gemini_model", "gemini-2.5-flash")
+            st.session_state[f"{keys_prefix}_temperature"] = float(new_config.get("temperature", 0.1))
+            st.session_state[f"{keys_prefix}_max_tokens"] = int(new_config.get("max_output_tokens", 2048))
+            st.session_state[f"{keys_prefix}_retriever_limit"] = int(new_config.get("retriever_limit", 5))
+            st.session_state[f"{keys_prefix}_max_retries"] = int(new_config.get("max_retries", 3))
+            st.session_state[f"{keys_prefix}_summarize"] = bool(new_config.get("summarize", False))
+            st.session_state[f"{keys_prefix}_reset_success"] = True
+
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                loop.create_task(_run())
+            else:
+                loop.run_until_complete(_run())
+        except RuntimeError:
+            asyncio.run(_run())
+
+    return _schedule_reset
+
+
+async def threads_management_sidebar():
+    if not st.session_state.threads_id:
+        st.info("No conversations yet. Click 'New Conversation' to start!")
+        return
+
+    for thread_id in st.session_state.threads_id:
+        is_selected = thread_id == st.session_state.selected_thread
+
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            button_label = f"{'✅ ' if is_selected else '💬 '}{thread_id[:8]}..."
+            if st.button(
+                button_label,
+                key=f"select_{thread_id}",
+                use_container_width=True,
+                type="primary" if is_selected else "secondary",
+            ):
+                await select_thread(thread_id)
+                st.rerun()
+
+        with col2:
+            if st.button("🗑️", key=f"delete_{thread_id}"):
+                await delete_thread_and_update_state(thread_id)
 
 
 async def main():
@@ -622,31 +687,7 @@ async def main():
         st.divider()
         st.subheader("💬 Conversations")
 
-        # List threads
-        if st.session_state.threads_id:
-            for thread_id in st.session_state.threads_id:
-                is_selected = thread_id == st.session_state.selected_thread
-
-                col1, col2 = st.columns([5, 1])
-                with col1:
-                    # Thread selection button
-                    button_label = f"{'✅ ' if is_selected else '💬 '}{thread_id[:8]}..."
-                    if st.button(
-                        button_label,
-                        key=f"select_{thread_id}",
-                        use_container_width=True,
-                        type="primary" if is_selected else "secondary",
-                    ):
-                        select_thread(thread_id)
-                        st.rerun()
-
-                with col2:
-                    # Delete button
-                    if st.button("🗑️", key=f"delete_{thread_id}"):
-                        delete_thread_and_update_state(thread_id)
-        else:
-            st.info("No conversations yet. Click 'New Conversation' to start!")
-
+        await threads_management_sidebar()
         # ==================== VECTORSTORE MANAGEMENT ====================
         st.divider()
         st.subheader("📚 Manage VectorStore")
@@ -724,7 +765,7 @@ async def main():
                     await run_save_config(config_changed, updates, key="vs_save_config")
 
                 with col2:
-                    await run_reset_config(key="vs_reset_config", keys_prefix="vs_config")
+                    run_reset_config(key="vs_reset_config", keys_prefix="vs_config")
 
                 if config_changed:
                     st.info("💡 You have unsaved changes")
@@ -822,7 +863,7 @@ async def main():
                     await run_save_config(config_changed, updates)
 
                 with col2:
-                    await run_reset_config()
+                    run_reset_config()
 
                 if config_changed:
                     st.info("💡 You have unsaved changes")
