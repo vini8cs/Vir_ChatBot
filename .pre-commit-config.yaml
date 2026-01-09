@@ -3,35 +3,13 @@ repos:
     rev: v0.14.11
     hooks:
       - id: ruff-check
-        types_or: [ python, pyi ]
-        args: [ --fix ]
+        types_or: [python, pyi]
+        args: [--fix, --select, "E,W,F,I,B,C4,SIM", --line-length, "120"]
       - id: ruff-format
-        types_or: [ python, pyi ]
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.1.0
-    hooks:
-      - id: flake8
-        additional_dependencies:
-          - flake8-bugbear==24.2.6
-          - flake8-comprehensions
-          - flake8-simplify
-        exclude: ^src/blib2to3/
-        args: [
-          "--ignore=E203,W503",
-         "--max-line-length=120"
-         ] 
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
-        args: [--line-length=120]
-        language_version: python3.12
+        types_or: [python, pyi]
+        args: [--line-length, "120"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-    - id: end-of-file-fixer
-      language_version: python3.12
+      - id: end-of-file-fixer
+        language_version: python3.12
