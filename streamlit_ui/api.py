@@ -69,6 +69,10 @@ class DeleteFileRequest(BaseModel):
     filenames: List[str]
 
 
+class TaskIDRequest(BaseModel):
+    task_id: str
+
+
 class ChatRequest(BaseModel):
     message: str
     thread_id: str = Field(..., description="Unique ID for the conversation thread")
@@ -85,7 +89,7 @@ class ThreadResponse(BaseModel):
 
 
 global_resources = {}
-runtime_config: RuntimeConfig = RuntimeConfig()  # Configuração em memória
+runtime_config: RuntimeConfig = RuntimeConfig()
 TEMP_UPLOAD_DIR = "/tmp/temp_uploads"
 Path(TEMP_UPLOAD_DIR).mkdir(exist_ok=True)
 
@@ -106,7 +110,6 @@ async def turn_wal_mode_on():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
     await turn_wal_mode_on()
 
     logging.info("Loading VectorStore into memory...")
@@ -244,9 +247,9 @@ async def upload_pdf(
                 await out_file.write(content)
             pdf_files_to_upload.append(file_path)
 
-    except Exception:
+    except Exception as e:
         await asyncio.to_thread(shutil.rmtree, upload_dir)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
     task = create_vectorstore_uploaded_pdfs.delay(pdf_files_to_upload)
 
@@ -321,60 +324,60 @@ async def list_pdfs():
 
 
 @app.get("/tasks/{task_id}/status")
-async def get_task_status(task_id: str):
+async def get_task_status(request: TaskIDRequest):
     """
     Get the status and progress of a Celery task.
     """
     try:
-        task_result = celery_app.AsyncResult(task_id)
+
+        def _handle_progress():
+            info = task_result.info or {}
+            return {
+                "current": info.get("current", 0),
+                "total": info.get("total", 0),
+                "percent": info.get("percent", 0),
+                "step": info.get("step", ""),
+                "details": info.get("details", ""),
+            }
+
+        def _handle_success():
+            result = task_result.result or {}
+            return {"result": result, "percent": 100}
+
+        def _handle_failure():
+            return {
+                "error": (str(task_result.result) if task_result.result else "Unknown error"),
+                "percent": 0,
+            }
+
+        def _handle_pending():
+            return {"percent": 0, "step": "Waiting", "details": "Task queued..."}
+
+        task_result = celery_app.AsyncResult(request.task_id)
 
         response = {
-            "task_id": task_id,
+            "task_id": request.task_id,
             "status": task_result.status,
             "ready": task_result.ready(),
             "successful": task_result.successful() if task_result.ready() else None,
         }
 
-        if task_result.status == "PROGRESS":
-            info = task_result.info or {}
-            response.update(
-                {
-                    "current": info.get("current", 0),
-                    "total": info.get("total", 0),
-                    "percent": info.get("percent", 0),
-                    "step": info.get("step", ""),
-                    "details": info.get("details", ""),
-                }
-            )
-        elif task_result.status == "SUCCESS":
-            result = task_result.result or {}
-            response.update(
-                {
-                    "result": result,
-                    "percent": 100,
-                }
-            )
-        elif task_result.status == "FAILURE":
-            response.update(
-                {
-                    "error": (str(task_result.result) if task_result.result else "Unknown error"),
-                    "percent": 0,
-                }
-            )
-        elif task_result.status == "PENDING":
-            response.update(
-                {
-                    "percent": 0,
-                    "step": "Waiting",
-                    "details": "Task queued...",
-                }
-            )
+        _handlers = {
+            "PROGRESS": _handle_progress,
+            "SUCCESS": _handle_success,
+            "FAILURE": _handle_failure,
+            "PENDING": _handle_pending,
+        }
+
+        handler = _handlers.get(task_result.status)
+        if handler:
+            response.update(handler())
 
         return response
 
     except Exception as e:
         logging.error(f"Error getting task status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting task status: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
 
 @app.post("/threads/create", response_model=ThreadResponse)
@@ -389,7 +392,7 @@ async def create_thread(request: CreateThreadRequest):
 
 
 @app.get("/threads/{user_id}")
-async def get_user_threads(user_id: str):
+async def get_user_threads(request: ThreadResponse):
     """
     Get all threads associated with a specific user.
     """
@@ -403,7 +406,7 @@ async def get_user_threads(user_id: str):
             FROM checkpoints 
             WHERE json_extract(CAST(metadata AS TEXT), '$.user_id') = ?
             """  # noqa: W291
-            async with conn.execute(query, (str(user_id),)) as cur:
+            async with conn.execute(query, (str(request.user_id),)) as cur:
                 rows = await cur.fetchall()
 
             return {"threads": [{"thread_id": r[0]} for r in rows]}
@@ -412,11 +415,11 @@ async def get_user_threads(user_id: str):
         if "no such table" in str(e).lower():
             return {"threads": []}
         logging.error(f"Database error: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
 
 @app.delete("/threads/{user_id}/{thread_id}")
-async def delete_thread(user_id: str, thread_id: str):
+async def delete_thread(request: ThreadResponse):
     """Delete a specific thread and its associated messages."""
     if not os.path.exists(_.SQLITE_MEMORY_DATABASE):
         raise HTTPException(status_code=404, detail="Database not found")
@@ -429,7 +432,7 @@ async def delete_thread(user_id: str, thread_id: str):
             AND json_extract(CAST(metadata AS TEXT), '$.user_id') = ?
             LIMIT 1
             """  # noqa W291
-            async with conn.execute(query, (str(thread_id), str(user_id))) as cur:
+            async with conn.execute(query, (str(request.thread_id), str(request.user_id))) as cur:
                 row = await cur.fetchone()
 
             if not row:
@@ -438,24 +441,24 @@ async def delete_thread(user_id: str, thread_id: str):
                     detail="Thread not found or access denied",
                 )
 
-            await conn.execute("DELETE FROM checkpoints WHERE thread_id = ?", (str(thread_id),))
+            await conn.execute("DELETE FROM checkpoints WHERE thread_id = ?", (str(request.thread_id),))
 
-            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (str(thread_id),))
+            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (str(request.thread_id),))
 
             await conn.commit()
-            return {"message": f"Thread {thread_id} deleted successfully"}
+            return {"message": f"Thread {request.thread_id} deleted successfully"}
 
     except HTTPException:
         raise
     except Exception as e:
         if "no such table" in str(e).lower():
-            raise HTTPException(status_code=404, detail="Thread not found or access denied")
+            raise HTTPException(status_code=404, detail="Thread not found or access denied") from e
         logging.error(f"CRITICAL DB ERROR: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
 
 @app.get("/threads/{thread_id}/messages")
-async def get_thread_messages(thread_id: str):
+async def get_thread_messages(request: ThreadResponse):
     """
     Get the message history for a specific thread.
     Extracts messages from the LangGraph checkpointer.
@@ -472,7 +475,7 @@ async def get_thread_messages(thread_id: str):
             ORDER BY checkpoint_id DESC
             LIMIT 1
             """  # noqa W291
-            async with conn.execute(query, (str(thread_id),)) as cur:
+            async with conn.execute(query, (str(request.thread_id),)) as cur:
                 row = await cur.fetchone()
 
             if not row:
@@ -506,7 +509,7 @@ async def get_thread_messages(thread_id: str):
     except Exception as e:
         if "no such table" in str(e).lower():
             return {"messages": []}
-        logging.error(f"Error loading messages for thread {thread_id}: {e}")
+        logging.error(f"Error loading messages for thread {request.thread_id}: {e}")
         return {"messages": []}
 
 

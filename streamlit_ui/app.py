@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from datetime import datetime
 from typing import Any, Coroutine
 
 import httpx
@@ -366,8 +367,6 @@ def add_message(role: str, content: str):
 
 def add_active_task(task_id: str, task_name: str):
     """Add a task to the active tasks tracking."""
-    from datetime import datetime
-
     st.session_state.active_tasks[task_id] = {
         "name": task_name,
         "started_at": datetime.now().isoformat(),
@@ -416,7 +415,7 @@ def create_failure_task(status):
     st.error(f"❌ FAILURE: {error}")
 
 
-def render_task_progress():
+async def render_task_progress():
     """Render progress bars for all active tasks."""
     if not st.session_state.active_tasks:
         return
@@ -452,7 +451,7 @@ def render_task_progress():
     }
 
     for task_id, task_info in list(st.session_state.active_tasks.items()):
-        status = get_task_status_api(task_id)
+        status = await get_task_status_api(task_id)
 
         if "error" in status and status.get("status") == "ERROR":
             st.error(f"❌ Error to verify task: {status['error']}")
@@ -661,267 +660,286 @@ async def threads_management_sidebar():
                 await delete_thread_and_update_state(thread_id)
 
 
+async def first_setup():
+    st.title("🧬 Vir ChatBot")
+    st.divider()
+
+    st.text_input(
+        "Enter your User ID:",
+        value=st.session_state.get("user_id", "default_user"),
+        key="user_id",
+    )
+
+    if (
+        "initialized_user" not in st.session_state
+        or st.session_state.get("initialized_user") != st.session_state.user_id
+    ):
+        await start_session_data(st.session_state.user_id)
+        st.session_state.initialized_user = st.session_state.user_id
+
+    st.caption(f"👤 User: {st.session_state.user_id}")
+
+    if st.button("➕ New Conversation", use_container_width=True):
+        await create_new_thread(st.session_state.user_id)
+
+    st.divider()
+    st.subheader("💬 Conversations")
+
+    await threads_management_sidebar()
+
+
+async def run_reload_vectorstore():
+    if st.button("🔄 Reload VectorStore", use_container_width=True, key="reload_vs"):
+        with st.spinner("Reloading VectorStore..."):
+            result = reload_vectorstore_api()
+            STATUS = {
+                "success": st.success(f"✅ {result.get('message')}"),
+                "warning": st.warning(f"⚠️ {result.get('message')}"),
+                "error": st.error(f"❌ {result.get('message', 'Unknown error')}"),
+            }
+            STATUS.get(result.get("status"))
+
+
+async def run_upload_pdfs_vectorstore():
+    uploaded_files = st.file_uploader(
+        "Select PDFs",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key="pdf_uploader",
+    )
+
+    if uploaded_files and st.button("📤 Upload and Create VectorStore", use_container_width=True):
+        with st.spinner("Uploading PDFs..."):
+            result = await upload_pdfs_api(uploaded_files)
+            if "error" in result:
+                return st.error(f"Error: {result['error']}")
+            st.success(f"✅ {result.get('message', 'PDFs uploaded!')}")
+            task_id = result.get("task_id")
+            if task_id:
+                add_active_task(task_id, f"Upload of {len(uploaded_files)} PDF(s)")
+                st.rerun()
+            return
+
+
+async def run_create_from_folder_vectorstore():
+    if st.button("📁 Create VectorStore from Folder", use_container_width=True):
+        with st.spinner("Starting creation..."):
+            result = create_vectorstore_from_folder_api()
+            if "error" in result:
+                return st.error(f"Error: {result['error']}")
+            st.success(f"✅ {result.get('message', 'Process started!')}")
+            task_id = result.get("task_id")
+            if task_id:
+                add_active_task(task_id, "Create VectorStore from Folder")
+                st.rerun()
+
+
+async def run_vectorstore_settings():
+    config = st.session_state.runtime_config
+    if "error" in config:
+        return st.error(f"Error loading config: {config['error']}")
+
+    new_model = model_selection(config, key="vs_config_model")
+    new_summarize = summarize_toggle(config, key="vs_config_summarize")
+
+    config_changed = new_model != config.get("gemini_model") or new_summarize != config.get("summarize")
+
+    updates = {
+        "gemini_model": new_model,
+        "summarize": new_summarize,
+    }
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        await run_save_config(config_changed, updates, key="vs_save_config")
+
+    with col2:
+        run_reset_config(key="vs_reset_config", keys_prefix="vs_config")
+
+    if config_changed:
+        st.info("💡 You have unsaved changes")
+
+
+async def check_selected_pdfs():
+    if st.button("🔄 Refresh List", use_container_width=True, key="refresh_pdfs"):
+        st.session_state.pdf_list = await list_pdfs_api()
+        st.rerun()
+
+    if "pdf_list" not in st.session_state:
+        st.session_state.pdf_list = await list_pdfs_api()
+
+    if "selected_pdfs" not in st.session_state:
+        st.session_state.selected_pdfs = []
+
+    pdf_list = st.session_state.pdf_list
+
+    if not pdf_list:
+        return st.info("No PDFs found in VectorStore.")
+
+    st.markdown(f"**{len(pdf_list)} PDF(s) found**")
+
+    search_term = st.text_input("🔍 Search PDF", key="pdf_search")
+
+    filtered_pdfs = [pdf for pdf in pdf_list if search_term.lower() in pdf.lower()] if search_term else pdf_list
+
+    selected = st.multiselect(
+        "Select PDFs to delete:",
+        options=filtered_pdfs,
+        default=[],
+        key="pdf_multiselect",
+    )
+
+    if not selected:
+        return
+
+    st.warning(f"⚠️ {len(selected)} PDF(s) selected for deletion")
+
+    if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
+        with st.spinner("Deleting PDFs..."):
+            result = await delete_pdfs_api(selected)
+            if "error" in result:
+                st.error(f"Error: {result['error']}")
+            else:
+                st.success(f"✅ {result.get('message', 'PDFs deleted!')}")
+                task_id = result.get("task_id")
+                if task_id:
+                    await add_active_task(task_id, f"Delete {len(selected)} PDF(s)")
+                st.session_state.pdf_list = await list_pdfs_api()
+                st.rerun()
+
+
+async def run_llm_config():
+    st.divider()
+    st.subheader("⚙️ Configuration")
+
+    with st.expander("🔧 LLM Settings", expanded=False):
+        config = st.session_state.runtime_config
+
+        if "error" in config:
+            st.error(f"Error loading config: {config['error']}")
+        else:
+            new_model = model_selection(config)
+            new_temperature = temperature_slider(config)
+            new_max_tokens = max_tokens_input(config)
+            new_retriever_limit = retriever_limit_input(config)
+            new_max_retries = max_retries_input(config)
+
+            st.divider()
+
+            config_changed = (
+                new_model != config.get("gemini_model")
+                or new_temperature != config.get("temperature")
+                or new_max_tokens != config.get("max_output_tokens")
+                or new_retriever_limit != config.get("retriever_limit")
+                or new_max_retries != config.get("max_retries")
+            )
+
+            updates = {
+                "gemini_model": new_model,
+                "temperature": new_temperature,
+                "max_output_tokens": new_max_tokens,
+                "retriever_limit": new_retriever_limit,
+                "max_retries": new_max_retries,
+            }
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                await run_save_config(config_changed, updates)
+
+            with col2:
+                run_reset_config()
+
+            if config_changed:
+                st.info("💡 You have unsaved changes")
+
+
+async def run_chat():
+    st.header(f"💬 Conversation: {st.session_state.selected_thread[:8]}...")
+    chat_container = st.container()
+    with chat_container:
+        for message in get_current_messages():
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    prompt = st.chat_input("Type your message...")
+    if not prompt:
+        return
+
+    add_message("user", prompt)
+
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
+
+        async for chunk in chat_stream_api(
+            message=prompt,
+            thread_id=st.session_state.selected_thread,
+            user_id=st.session_state.user_id,
+        ):
+            full_response = chunk
+            message_placeholder.markdown(full_response + "▌")
+
+        message_placeholder.markdown(full_response)
+
+    add_message("assistant", full_response)
+
+
+async def run_chat_no_thread():
+    st.title("🧬 Welcome to Vir ChatBot!")
+    st.markdown(
+        """
+    ### How to use:
+    1. Click **"New Conversation"** in the sidebar to create a new chat
+    2. Type your message in the text box below
+    3. The assistant will respond based on the available virology knowledge
+    ---
+    *Select or create a conversation to start!*
+    """
+    )
+
+    if st.button("🚀 Start New Conversation", type="primary"):
+        await create_new_thread(st.session_state.user_id)
+
+
 async def main():
     with st.sidebar:
-        st.title("🧬 Vir ChatBot")
-        st.divider()
+        await first_setup()
 
-        st.text_input(
-            "Enter your User ID:",
-            value=st.session_state.get("user_id", "default_user"),
-            key="user_id",
-        )
-
-        if (
-            "initialized_user" not in st.session_state
-            or st.session_state.get("initialized_user") != st.session_state.user_id
-        ):
-            await start_session_data(st.session_state.user_id)
-            st.session_state.initialized_user = st.session_state.user_id
-
-        st.caption(f"👤 User: {st.session_state.user_id}")
-
-        if st.button("➕ New Conversation", use_container_width=True):
-            await create_new_thread(st.session_state.user_id)
-
-        st.divider()
-        st.subheader("💬 Conversations")
-
-        await threads_management_sidebar()
-        # ==================== VECTORSTORE MANAGEMENT ====================
         st.divider()
         st.subheader("📚 Manage VectorStore")
 
-        # Reload VectorStore button
-        if st.button("🔄 Reload VectorStore", use_container_width=True, key="reload_vs"):
-            with st.spinner("Reloading VectorStore..."):
-                result = reload_vectorstore_api()
-                if result.get("status") == "success":
-                    st.success(f"✅ {result.get('message')}")
-                elif result.get("status") == "warning":
-                    st.warning(f"⚠️ {result.get('message')}")
-                else:
-                    st.error(f"❌ {result.get('message', 'Unknown error')}")
+        await run_reload_vectorstore()
 
-        # Expander for creating vectorstore
         with st.expander("➕ Create VectorStore", expanded=False):
             st.markdown("**Option 1: Upload PDFs**")
-            uploaded_files = st.file_uploader(
-                "Select PDFs",
-                type=["pdf"],
-                accept_multiple_files=True,
-                key="pdf_uploader",
-            )
-
-            if uploaded_files and st.button("📤 Upload and Create VectorStore", use_container_width=True):
-                with st.spinner("Uploading PDFs..."):
-                    result = upload_pdfs_api(uploaded_files)
-                    if "error" in result:
-                        st.error(f"Error: {result['error']}")
-                    else:
-                        st.success(f"✅ {result.get('message', 'PDFs uploaded!')}")
-                        task_id = result.get("task_id")
-                        if task_id:
-                            add_active_task(task_id, f"Upload of {len(uploaded_files)} PDF(s)")
-                            st.rerun()
+            await run_upload_pdfs_vectorstore()
 
             st.markdown("---")
             st.markdown("**Option 2: Create from Folder**")
             st.caption("Creates the VectorStore from the configured PDFs folder.")
-
-            if st.button("📁 Create VectorStore from Folder", use_container_width=True):
-                with st.spinner("Starting creation..."):
-                    result = create_vectorstore_from_folder_api()
-                    if "error" in result:
-                        st.error(f"Error: {result['error']}")
-                    else:
-                        st.success(f"✅ {result.get('message', 'Process started!')}")
-                        task_id = result.get("task_id")
-                        if task_id:
-                            add_active_task(task_id, "Create VectorStore from Folder")
-                            st.rerun()
+            await run_create_from_folder_vectorstore()
 
             st.markdown("---")
             st.markdown("**VectorStore Settings**")
             st.caption("Define if the summarization of context with AI should be enabled during VectorStore creation.")
+            await run_vectorstore_settings()
 
-            config = st.session_state.runtime_config
-            if "error" in config:
-                st.error(f"Error loading config: {config['error']}")
-            else:
-                new_model = model_selection(config, key="vs_config_model")
-                new_summarize = summarize_toggle(config, key="vs_config_summarize")
-
-                config_changed = new_model != config.get("gemini_model") or new_summarize != config.get("summarize")
-
-                updates = {
-                    "gemini_model": new_model,
-                    "summarize": new_summarize,
-                }
-
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    await run_save_config(config_changed, updates, key="vs_save_config")
-
-                with col2:
-                    run_reset_config(key="vs_reset_config", keys_prefix="vs_config")
-
-                if config_changed:
-                    st.info("💡 You have unsaved changes")
-
-        # Expander for managing PDFs in vectorstore
         with st.expander("📋 PDFs in VectorStore", expanded=False):
-            # Refresh button
-            if st.button("🔄 Refresh List", use_container_width=True, key="refresh_pdfs"):
-                st.session_state.pdf_list = await list_pdfs_api()
-                st.rerun()
-
-            # Initialize pdf list in session state
-            if "pdf_list" not in st.session_state:
-                st.session_state.pdf_list = await list_pdfs_api()
-
-            if "selected_pdfs" not in st.session_state:
-                st.session_state.selected_pdfs = []
-
-            pdf_list = st.session_state.pdf_list
-
-            if pdf_list:
-                st.markdown(f"**{len(pdf_list)} PDF(s) found**")
-
-                # Search filter
-                search_term = st.text_input("🔍 Search PDF", key="pdf_search")
-
-                # Filter PDFs based on search
-                filtered_pdfs = (
-                    [pdf for pdf in pdf_list if search_term.lower() in pdf.lower()] if search_term else pdf_list
-                )
-
-                # Multiselect for PDFs
-                selected = st.multiselect(
-                    "Select PDFs to delete:",
-                    options=filtered_pdfs,
-                    default=[],
-                    key="pdf_multiselect",
-                )
-
-                if selected:
-                    st.warning(f"⚠️ {len(selected)} PDF(s) selected for deletion")
-
-                    if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
-                        with st.spinner("Deleting PDFs..."):
-                            result = delete_pdfs_api(selected)
-                            if "error" in result:
-                                st.error(f"Error: {result['error']}")
-                            else:
-                                st.success(f"✅ {result.get('message', 'PDFs deleted!')}")
-                                task_id = result.get("task_id")
-                                if task_id:
-                                    add_active_task(task_id, f"Delete {len(selected)} PDF(s)")
-                                st.session_state.pdf_list = list_pdfs_api()
-                                st.rerun()
-            else:
-                st.info("No PDFs found in VectorStore.")
-
-        # ==================== CONFIGURATION MANAGEMENT ====================
-        st.divider()
-        st.subheader("⚙️ Configuration")
-
-        with st.expander("🔧 LLM Settings", expanded=False):
-            config = st.session_state.runtime_config
-
-            if "error" in config:
-                st.error(f"Error loading config: {config['error']}")
-            else:
-                new_model = model_selection(config)
-                new_temperature = temperature_slider(config)
-                new_max_tokens = max_tokens_input(config)
-                new_retriever_limit = retriever_limit_input(config)
-                new_max_retries = max_retries_input(config)
-
-                st.divider()
-
-                config_changed = (
-                    new_model != config.get("gemini_model")
-                    or new_temperature != config.get("temperature")
-                    or new_max_tokens != config.get("max_output_tokens")
-                    or new_retriever_limit != config.get("retriever_limit")
-                    or new_max_retries != config.get("max_retries")
-                )
-
-                updates = {
-                    "gemini_model": new_model,
-                    "temperature": new_temperature,
-                    "max_output_tokens": new_max_tokens,
-                    "retriever_limit": new_retriever_limit,
-                    "max_retries": new_max_retries,
-                }
-
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    await run_save_config(config_changed, updates)
-
-                with col2:
-                    run_reset_config()
-
-                if config_changed:
-                    st.info("💡 You have unsaved changes")
+            await check_selected_pdfs()
 
         if st.session_state.active_tasks:
             st.divider()
             render_task_progress()
 
     if st.session_state.selected_thread:
-        st.header(f"💬 Conversation: {st.session_state.selected_thread[:8]}...")
-
-        chat_container = st.container()
-        with chat_container:
-            for message in get_current_messages():
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-
-        if prompt := st.chat_input("Type your message..."):
-            add_message("user", prompt)
-
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                full_response = ""
-
-                async for chunk in chat_stream_api(
-                    message=prompt,
-                    thread_id=st.session_state.selected_thread,
-                    user_id=st.session_state.user_id,
-                ):
-                    full_response = chunk  # The API sends the full accumulated content
-                    message_placeholder.markdown(full_response + "▌")
-
-                # Final response without cursor
-                message_placeholder.markdown(full_response)
-
-            # Add assistant message to history
-            add_message("assistant", full_response)
-
+        await run_chat()
     else:
-        # No thread selected
-        st.title("🧬 Welcome to Vir ChatBot!")
-        st.markdown(
-            """
-        ### How to use:
-        1. Click **"New Conversation"** in the sidebar to create a new chat
-        2. Type your message in the text box below
-        3. The assistant will respond based on the available virology knowledge
-        ---
-        *Select or create a conversation to start!*
-        """
-        )
-
-        # Quick start button
-        if st.button("🚀 Start New Conversation", type="primary"):
-            await create_new_thread(st.session_state.user_id)
+        await run_chat_no_thread()
 
 
 if __name__ == "__main__":
