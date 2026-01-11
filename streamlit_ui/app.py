@@ -395,19 +395,19 @@ def create_progress_task(status):
     return True
 
 
-def create_success_task(status, task_name):
+async def create_success_task(status, task_name):
     result = status.get("result", {})
     message = result.get("message", "Finished successfully!")
     result_status = result.get("status", "")
 
-    if result_status == "Failure":
-        st.error(f"❌ FAILURE: {result.get('error', 'Unknown Error')}")
-    else:
-        st.success(f"✅ {message}")
-        if "Upload" in task_name or "Create" in task_name:
-            reload_result = reload_vectorstore_api()
-            if reload_result.get("status") == "success":
-                st.info("🔄 VectorStore reloaded into memory.")
+    if result_status in ("Failure", "Error"):
+        st.error(f"❌ ERROR: {result.get('error', 'Unknown Error')}")
+        return
+    st.success(f"✅ {message}")
+    if "Upload" in task_name or "Create" in task_name:
+        reload_result = await reload_vectorstore_api()
+        if reload_result.get("status") == "success":
+            st.info("🔄 VectorStore reloaded into memory.")
 
 
 def create_failure_task(status):
@@ -431,8 +431,8 @@ async def render_task_progress():
     def _handle_progress(status, task_name, task_id):
         return create_progress_task(status), False
 
-    def _handle_success(status, task_name, task_id):
-        create_success_task(status, task_name)
+    async def _handle_success(status, task_name, task_id):
+        await create_success_task(status, task_name)
         return False, True
 
     def _handle_failure(status, task_name, task_id):
@@ -468,7 +468,11 @@ async def render_task_progress():
                 st.markdown(f"**{task_name}**")
 
                 handler = STATUS_HANDLERS.get(task_status, _handle_unknown)
-                has_running, remove_flag = handler(status, task_name, task_id)
+                result = handler(status, task_name, task_id)
+                if asyncio.iscoroutine(result):
+                    has_running, remove_flag = await result
+                else:
+                    has_running, remove_flag = result
                 has_running_tasks = has_running_tasks or has_running
 
                 if remove_flag:
@@ -614,7 +618,6 @@ def make_reset_config_callback(keys_prefix: str = "config"):
                 return
             new_config = await get_config_api()
             st.session_state.runtime_config = new_config
-
             st.session_state[f"{keys_prefix}_model"] = new_config.get("gemini_model", "gemini-2.5-flash")
             st.session_state[f"{keys_prefix}_temperature"] = float(new_config.get("temperature", 0.1))
             st.session_state[f"{keys_prefix}_max_tokens"] = int(new_config.get("max_output_tokens", 2048))
@@ -625,10 +628,7 @@ def make_reset_config_callback(keys_prefix: str = "config"):
 
         try:
             loop = asyncio.get_running_loop()
-            if loop.is_running():
-                loop.create_task(_run())
-            else:
-                loop.run_until_complete(_run())
+            loop.create_task(_run())
         except RuntimeError:
             asyncio.run(_run())
 
@@ -691,13 +691,16 @@ async def first_setup():
 async def run_reload_vectorstore():
     if st.button("🔄 Reload VectorStore", use_container_width=True, key="reload_vs"):
         with st.spinner("Reloading VectorStore..."):
-            result = reload_vectorstore_api()
-            STATUS = {
-                "success": st.success(f"✅ {result.get('message')}"),
-                "warning": st.warning(f"⚠️ {result.get('message')}"),
-                "error": st.error(f"❌ {result.get('message', 'Unknown error')}"),
-            }
-            STATUS.get(result.get("status"))
+            result = await reload_vectorstore_api()
+            status = result.get("status")
+            message = result.get("message", "Unknown error")
+
+            if status == "success":
+                st.success(f"✅ {message}")
+            elif status == "warning":
+                st.warning(f"⚠️ {message}")
+            elif status == "error":
+                st.error(f"❌ {message}")
 
 
 async def run_upload_pdfs_vectorstore():
@@ -724,7 +727,7 @@ async def run_upload_pdfs_vectorstore():
 async def run_create_from_folder_vectorstore():
     if st.button("📁 Create VectorStore from Folder", use_container_width=True):
         with st.spinner("Starting creation..."):
-            result = create_vectorstore_from_folder_api()
+            result = await create_vectorstore_from_folder_api()
             if "error" in result:
                 return st.error(f"Error: {result['error']}")
             st.success(f"✅ {result.get('message', 'Process started!')}")
@@ -741,12 +744,18 @@ async def run_vectorstore_settings():
 
     new_model = model_selection(config, key="vs_config_model")
     new_summarize = summarize_toggle(config, key="vs_config_summarize")
+    new_max_tokens = max_tokens_input(config, key="vs_config_max_tokens")
 
-    config_changed = new_model != config.get("gemini_model") or new_summarize != config.get("summarize")
+    config_changed = (
+        new_model != config.get("gemini_model")
+        or new_summarize != config.get("summarize")
+        or new_max_tokens != config.get("max_output_tokens")
+    )
 
     updates = {
         "gemini_model": new_model,
         "summarize": new_summarize,
+        "max_output_tokens": new_max_tokens,
     }
 
     col1, col2 = st.columns(2)
@@ -804,15 +813,12 @@ async def check_selected_pdfs():
                 st.success(f"✅ {result.get('message', 'PDFs deleted!')}")
                 task_id = result.get("task_id")
                 if task_id:
-                    await add_active_task(task_id, f"Delete {len(selected)} PDF(s)")
+                    add_active_task(task_id, f"Delete {len(selected)} PDF(s)")
                 st.session_state.pdf_list = await list_pdfs_api()
                 st.rerun()
 
 
 async def run_llm_config():
-    st.divider()
-    st.subheader("⚙️ Configuration")
-
     with st.expander("🔧 LLM Settings", expanded=False):
         config = st.session_state.runtime_config
 
@@ -932,9 +938,14 @@ async def main():
         with st.expander("📋 PDFs in VectorStore", expanded=False):
             await check_selected_pdfs()
 
+        st.divider()
+        st.subheader("⚙️ Configuration")
+
+        await run_llm_config()
+
         if st.session_state.active_tasks:
             st.divider()
-            render_task_progress()
+            await render_task_progress()
 
     if st.session_state.selected_thread:
         await run_chat()

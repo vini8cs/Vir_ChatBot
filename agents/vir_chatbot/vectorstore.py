@@ -149,9 +149,7 @@ class VectorStoreCreator(Gemini):
 
     def _check_chache(self):
         logging.info(f"Checking if cache exists {self.cache}...")
-        if os.path.exists(self.cache):
-            return True
-        return False
+        return os.path.exists(self.cache)
 
     def _diff_vs_cache(self):
         logging.info("Diffing PDFs vs Cache...")
@@ -279,12 +277,11 @@ class VectorStoreCreator(Gemini):
         )
         processed_df = processed_df.dropna(subset=["summarized_content"])
         processed_df["summarized_content"] = processed_df["summarized_content"].apply(
-            lambda x: json.loads(x)[0] if len(json.loads(x)) > 0 else None
+            lambda x: json.loads(x)[0] if isinstance(json.loads(x), list) and len(json.loads(x)) > 0 else None
         )
         return update_metadata_and_summary(processed_df)
 
     def _start_chunking_process(self):
-
         all_text_chunks = []
         all_image_chunks = []
 

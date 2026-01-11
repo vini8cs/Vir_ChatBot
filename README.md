@@ -1,4 +1,4 @@
-# 🦠 Vir ChatBot
+# Vir ChatBot
 
 A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and **bioinformatics**, designed to run locally. Use your own scientific documents (PDFs) to create a personalized knowledge base and interact with your data through an intelligent assistant.
 
@@ -38,22 +38,22 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Streamlit UI  │────▶│   FastAPI       │────▶│   LangGraph     │
-│   (Frontend)    │     │   (Backend)     │     │   (Agent)       │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                                │                        │
-                                ▼                        ▼
-                        ┌───────────────┐       ┌───────────────┐
-                        │    Redis      │       │    FAISS      │
-                        │   (Queue)     │       │ (VectorStore) │
-                        └───────────────┘       └───────────────┘
-                                │
-                                ▼
-                        ┌───────────────┐
-                        │    Celery     │
-                        │   (Worker)    │
-                        └───────────────┘
+┌────────────┐      ┌────────────┐      ┌────────────┐      ┌────────────┐
+│  Streamlit │ ───► │  FastAPI   │ ───► │  LangGraph │ ───► │   Gemini   │
+│     UI     │      │  Backend   │      │   Agent    │      │    API     │
+└────────────┘      └─────┬──────┘      └─────┬──────┘      └────────────┘
+    :8501                 │                   │
+                         │                   ▼
+                         │            ┌────────────┐
+                         │            │   FAISS    │
+                         │            │ VectorStore│
+                         │            └────────────┘
+                         ▼
+                   ┌────────────┐      ┌────────────┐
+                   │   Redis    │ ◄──► │   Celery   │
+                   │   Queue    │      │   Worker   │
+                   └────────────┘      └────────────┘
+                       :6379           PDF Processing
 ```
 
 ### Data Flow
@@ -71,12 +71,57 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 
 - **Docker** and **Docker Compose** (recommended)
 - **Python 3.12+** (for local development)
+- **[uv](https://docs.astral.sh/uv/)** - Fast Python package manager (for local development)
 - **Google Cloud Account** with access to Gemini/Vertex AI API
 - **GCP Credentials** (service account JSON file)
 
 ---
 
 ## 🚀 Installation
+
+### Installing uv (Python Package Manager)
+
+This project uses **[uv](https://docs.astral.sh/uv/)** for fast and reliable Python package management. If you don't have it installed:
+
+```bash
+# Linux/macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or via pip
+pip install uv
+```
+
+### Installing Ruff (Linter & Formatter)
+
+**[Ruff](https://docs.astral.sh/ruff/)** is an extremely fast Python linter and formatter used in this project. Install it as a global tool using uv:
+
+```bash
+# Install Ruff globally via uv (recommended)
+uv tool install ruff
+
+# Verify the installation
+ruff --version
+```
+
+> **💡 Why `uv tool install`?**  
+> Using `uv tool install` installs Ruff in an isolated environment while making it globally available in your terminal. This keeps your system Python clean and avoids dependency conflicts. Ruff will be available from any directory.
+
+**Common Ruff commands:**
+```bash
+# Check for linting issues
+ruff check .
+
+# Fix auto-fixable issues
+ruff check . --fix
+
+# Format code
+ruff format .
+```
+
+---
 
 ### Via Docker Compose (Recommended)
 
@@ -103,18 +148,22 @@ cd Vir_ChatBot
 # Install dependencies with uv
 uv sync
 
+# Configure environment variables
+cp .env.example .env
+# Edit the .env file with your credentials
+
 # Start Redis (required for Celery)
-docker run -d -p 6379:6379 redis:7
+docker run -d -p 6379:6379 --name redis-vir redis:7
 
 # In separate terminals, start:
 # 1. Celery Worker
-celery -A tasks worker -l info
+uv run celery -A tasks worker -l info
 
 # 2. FastAPI Backend
-uvicorn streamlit_ui.api:app --host 0.0.0.0 --port 8000
+uv run uvicorn streamlit_ui.api:app --host 0.0.0.0 --port 8000
 
 # 3. Streamlit Interface
-cd streamlit_ui && streamlit run app.py
+cd streamlit_ui && uv run streamlit run app.py
 ```
 
 ---
@@ -136,6 +185,12 @@ VECTORSTORE_PATH=/path/to/vectorstore
 CACHE_FOLDER_PATH=/path/to/cache
 SQLITE_MEMORY_DATABASE=/path/to/memory.sqlite
 
+# Ports (Optional - defaults shown)
+WEB_PORT=8000
+REDIS_PORT=6379
+REDIS_COMMANDER_PORT=8081
+STREAMLIT_PORT=8501
+
 # LangSmith (Optional - for tracing/debugging)
 LANGSMITH_API_KEY=your_langsmith_key
 LANGSMITH_TRACING_V2=true
@@ -143,18 +198,29 @@ LANGSMITH_ENDPOINT=https://api.smith.langchain.com
 LANGSMITH_PROJECT=vir-chatbot
 ```
 
+> **📝 Note about `PDF_FOLDER`:**  
+> This variable is **optional**. It's useful if you want to create the VectorStore from a pre-existing folder with PDFs. However, you can also upload PDFs directly through the web interface or select individual files — the `PDF_FOLDER` is not required for the application to work.
+
 ### Model Configuration
 
-Model parameters can be adjusted in [config.py](config.py):
+The default model parameters are defined in [config.py](config.py):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `GEMINI_MODEL` | `gemini-2.5-flash` | LLM model for chat and summarization |
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | Model for embeddings |
 | `TEMPERATURE` | `0.1` | Model creativity (0-1) |
+| `MAX_OUTPUT_TOKENS` | `2048` | Maximum output tokens |
 | `TOKEN_SIZE` | `2048` | Maximum chunk size |
 | `RETRIEVER_LIMIT` | `5` | Number of retrieved documents |
-| `LANGUAGES` | `["eng", "pt"]` | Languages for OCR |
+| `SUMMARIZE` | `false` | Enable/disable document summarization |
+
+> **💡 Runtime Configuration via UI:**  
+> Most of these parameters can be adjusted directly in the **Streamlit interface** without modifying the config file:
+> - **🔧 LLM Settings** (in the sidebar): Configure `model`, `temperature`, `max_tokens`, `retriever_limit`, and `max_retries` for the chat.
+> - **VectorStore Settings** (inside "Create VectorStore" expander): Configure `model`, `max_tokens`, and `summarize` for VectorStore creation.
+> 
+> Changes made in the UI are applied at runtime and do not require restarting the services.
 
 ---
 
@@ -162,28 +228,36 @@ Model parameters can be adjusted in [config.py](config.py):
 
 ### Accessing the Interface
 
-After starting the services, access:
+After starting the services, access (using default ports):
 
 - **Chat Interface**: http://localhost:8501
 - **REST API**: http://localhost:8000
 - **Redis Commander** (debug): http://localhost:8081
 
+> **💡 Custom Ports:** If you configured custom ports in `.env` (e.g., `STREAMLIT_PORT=3000`), use those instead.
+
 ### Interface Features
 
-1. **PDF Upload**: 
-   - Go to the "Manage Documents" tab in the sidebar
-   - Upload your scientific papers
-   - Wait for processing (monitored in real-time)
+1. **Create VectorStore** (in the sidebar under "📚 Manage VectorStore"):
+   - **Option 1 - Upload PDFs**: Select and upload individual PDF files directly through the interface
+   - **Option 2 - Create from Folder**: Use the pre-configured `PDF_FOLDER` path (if set in `.env`)
+   - **VectorStore Settings**: Configure the model, max tokens, and enable/disable summarization before creating
 
 2. **Chat with Documents**:
    - Create a new conversation thread
    - Ask questions about virology/bioinformatics
    - The bot will respond based on loaded documents
+   - Use **🔧 LLM Settings** to adjust model, temperature, max tokens, retriever limit, and retries
 
 3. **Thread Management**:
    - Create multiple conversations
    - Switch between threads
    - Delete old conversations
+
+4. **PDF Management** (in "📋 PDFs in VectorStore"):
+   - View all PDFs indexed in the VectorStore
+   - Search and filter PDFs
+   - Delete selected PDFs from the VectorStore
 
 ### Example Questions
 

@@ -33,9 +33,15 @@ def update_task_progress(task, current: int, total: int, step: str, details: str
 
 
 @app.task(bind=True)
-def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
+def create_vectorstore_uploaded_pdfs(
+    self,
+    pdfs_to_add: list[str],
+    summarize: bool = False,
+    gemini_model: str = "gemini-2.5-flash",
+):
     total_steps = 5
     logging.info("Building/adding new PDFs to vectorstore...")
+    logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
     try:
         update_task_progress(
             self,
@@ -45,7 +51,11 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
             f"Processing {len(pdfs_to_add)} PDF(s)...",
         )
 
-        vector_store_creator = VectorStoreCreator(pdfs_to_add=pdfs_to_add)
+        vector_store_creator = VectorStoreCreator(
+            pdfs_to_add=pdfs_to_add,
+            summarize=summarize,
+            gemini_model=gemini_model,
+        )
         vector_store_creator.pdf_paths = vector_store_creator.pdfs_to_add.copy()
 
         update_task_progress(
@@ -82,9 +92,6 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
             "percent": 100,
         }
 
-    except Exception as e:
-        logging.info(f"Error in Celery task: {e}")
-        return {"status": "Error", "error": str(e)}
     except NoNewPDFError:
         return {
             "status": "Success",
@@ -93,6 +100,9 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
             "total": total_steps,
             "percent": 100,
         }
+    except Exception as e:
+        logging.exception(f"Error in Celery task: {e}")
+        return {"status": "Error", "error": str(e)}
     finally:
         for file_temp in pdfs_to_add:
             if not os.path.isfile(file_temp):
@@ -101,12 +111,20 @@ def create_vectorstore_uploaded_pdfs(self, pdfs_to_add: list[str]):
 
 
 @app.task(bind=True)
-def create_vectorstore_from_folder(self):
+def create_vectorstore_from_folder(
+    self,
+    summarize: bool = False,
+    gemini_model: str = "gemini-2.5-flash",
+):
     total_steps = 6
+    logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
     try:
         update_task_progress(self, 1, total_steps, "Starting", "Searching for PDFs in folder...")
 
-        vector_store_creator = VectorStoreCreator()
+        vector_store_creator = VectorStoreCreator(
+            summarize=summarize,
+            gemini_model=gemini_model,
+        )
         if vector_store_creator._check_chache() or vector_store_creator._check_vectorstore_exists():
             raise VectorAlreadyCreatedError
         vector_store_creator._find_pdf()

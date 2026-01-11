@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     CACHE_FOLDER_PATH: str = "cache.csv"
     API_BASE_URL: str = "http://localhost:8000"
 
+    WEB_PORT: int = 8000
+    REDIS_PORT: int = 6379
+    REDIS_COMMANDER_PORT: int = 8081
+    STREAMLIT_PORT: int = 8501
+
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 
@@ -51,7 +56,7 @@ try:
     logging.info("Initializing Gemini client...")
     CLIENT_GEMINI = genai.Client()
 except Exception as e:
-    raise GeminiConnectionError(f"Error initializing Gemini client: {e}")
+    raise GeminiConnectionError(f"Error initializing Gemini client: {e}") from e
 
 GEMINI_MODEL = "gemini-2.5-flash"
 EMBEDDING_MODEL = "gemini-embedding-001"
