@@ -14,6 +14,7 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 - [Features](#-features)
 - [Architecture](#-architecture)
 - [Prerequisites](#-prerequisites)
+- [System Requirements](#-system-requirements)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
 - [Usage](#-usage)
@@ -77,7 +78,43 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 
 ---
 
-## 🚀 Installation
+## � System Requirements
+
+### Memory (RAM)
+
+| Scenario | Minimum | Recommended |
+|----------|---------|-------------|
+| **Development** | 8 GB | 16 GB |
+| **Production (light usage)** | 16 GB | 24 GB |
+| **Production (heavy usage)** | 24 GB | 32 GB+ |
+
+**Typical memory usage per container:**
+
+| Container | Idle | Under Load |
+|-----------|------|------------|
+| **web** (FastAPI + LangChain) | ~500 MB | ~1-2 GB |
+| **worker** (Celery + Docling/OCR) | ~500 MB | ~3-4 GB |
+| **streamlit** | ~40 MB | ~100 MB |
+| **redis** | ~20 MB | ~50-100 MB |
+
+> ⚠️ **Note**: The Celery worker can consume significant memory spikes (~3-4 GB) during PDF processing with Docling and OCR. Processing large or complex documents may require additional memory.
+
+### Disk Space
+
+| Component | Size |
+|-----------|------|
+| **Docker images** (all services) | ~4-5 GB |
+| **Python dependencies** | ~2 GB |
+| **Base system** | ~500 MB |
+| **Data volumes** (vectorstore, PDFs, cache) | Variable* |
+
+> *Data volumes depend on the number and size of processed documents. Each PDF generates embeddings stored in the FAISS vectorstore.
+
+**Minimum recommended disk space**: **15 GB** (excluding your PDF documents)
+
+---
+
+## �🚀 Installation
 
 ### Installing uv (Python Package Manager)
 
@@ -92,18 +129,6 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 # Or via pip
 pip install uv
-```
-
-### Installing Ruff (Linter & Formatter)
-
-**[Ruff](https://docs.astral.sh/ruff/)** is an extremely fast Python linter and formatter used in this project. Install it as a global tool using uv:
-
-```bash
-# Install Ruff globally via uv (recommended)
-uv tool install ruff
-
-# Verify the installation
-ruff --version
 ```
 
 > **💡 Why `uv tool install`?**  
