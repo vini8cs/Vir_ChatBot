@@ -116,38 +116,6 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 
 ## �🚀 Installation
 
-### Installing uv (Python Package Manager)
-
-This project uses **[uv](https://docs.astral.sh/uv/)** for fast and reliable Python package management. If you don't have it installed:
-
-```bash
-# Linux/macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Or via pip
-pip install uv
-```
-
-> **💡 Why `uv tool install`?**  
-> Using `uv tool install` installs Ruff in an isolated environment while making it globally available in your terminal. This keeps your system Python clean and avoids dependency conflicts. Ruff will be available from any directory.
-
-**Common Ruff commands:**
-```bash
-# Check for linting issues
-ruff check .
-
-# Fix auto-fixable issues
-ruff check . --fix
-
-# Format code
-ruff format .
-```
-
----
-
 ### Via Docker Compose (Recommended)
 
 ```bash
@@ -195,6 +163,21 @@ uv run uvicorn streamlit_ui.api:app --host 0.0.0.0 --port 8000
 
 # 3. Streamlit Interface
 cd streamlit_ui && uv run streamlit run app.py
+```
+
+#### Installing uv (Python Package Manager)
+
+This project uses **[uv](https://docs.astral.sh/uv/)** for fast and reliable Python package management. If you don't have it installed:
+
+```bash
+# Linux/macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or via pip
+pip install uv
 ```
 
 ---
