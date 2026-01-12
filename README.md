@@ -180,16 +180,16 @@ Create a `.env` file in the project root with the following variables:
 
 ```env
 # Google Cloud / Gemini (Required)
-GEMINI_API_KEY=your_gemini_api_key
-GCP_CREDENTIALS=/path/to/your/credentials.json
-GCP_PROJECT=your_gcp_project_id
-GCP_REGION=us-central1
+GEMINI_API_KEY="your_gemini_api_key"
+GCP_CREDENTIALS="/path/to/your/credentials.json"
+GCP_PROJECT="your_gcp_project_id"
+GCP_REGION="us-central1"
 
 # Paths (adjust as needed)
-PDF_FOLDER=/path/to/your/pdfs
-VECTORSTORE_PATH=/path/to/vectorstore
-CACHE_FOLDER_PATH=/path/to/cache
-SQLITE_MEMORY_DATABASE=/path/to/memory.sqlite
+PDF_FOLDER="/path/to/your/pdfs_folder_path"
+VECTORSTORE_PATH="/path/to/vectorstore_folder_path"
+CACHE_FOLDER_PATH="/path/to/cache_folder_path"
+SQLITE_MEMORY_DATABASE="/path/to/memory.sqlite"
 
 # Ports (Optional - defaults shown)
 WEB_PORT=8000
@@ -197,11 +197,14 @@ REDIS_PORT=6379
 REDIS_COMMANDER_PORT=8081
 STREAMLIT_PORT=8501
 
+# Streamlit UI Configuration
+API_BASE_URL="http://localhost:8000"  # Must match WEB_PORT
+
 # LangSmith (Optional - for tracing/debugging)
-LANGSMITH_API_KEY=your_langsmith_key
+LANGSMITH_API_KEY="your_langsmith_key"
 LANGSMITH_TRACING_V2=true
-LANGSMITH_ENDPOINT=https://api.smith.langchain.com
-LANGSMITH_PROJECT=vir-chatbot
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+LANGSMITH_PROJECT="vir-chatbot"
 ```
 
 > **📝 Note about `PDF_FOLDER`:**  
