@@ -136,6 +136,12 @@ cp .env.example .env
 
 # Start the services
 docker compose up --build
+
+# To stop the services (Ctrl+C or in another terminal)
+docker compose down
+
+# To stop and remove all data (volumes)
+docker compose down -v
 ```
 
 ### Local Development
