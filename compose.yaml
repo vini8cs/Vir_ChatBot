@@ -51,6 +51,7 @@ services:
       - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
       - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
+      - REDIS_PORT=${REDIS_PORT:-6379}
   redis:
     image: redis:7
     ports:

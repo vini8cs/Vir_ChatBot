@@ -11,11 +11,14 @@ from agents.vir_chatbot.vectorstore import (
     VectorAlreadyCreatedError,
     VectorStoreCreator,
 )
+from config import settings
+
+REDIS_PORT = settings.REDIS_PORT
 
 app = Celery(
     "tasks",
-    broker="redis://redis:6379",
-    backend="redis://redis:6379",
+    broker=f"redis://redis:{REDIS_PORT}",
+    backend=f"redis://redis:{REDIS_PORT}",
 )
 
 
