@@ -18,13 +18,13 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from pydantic import BaseModel, Field
 
 import config as _
-from agents.vir_chatbot.vir_chatbot import create_graph, load_global_vectorstore
-from tasks import app as celery_app
-from tasks import (
+from agents.vir_chatbot.tasks import app as celery_app
+from agents.vir_chatbot.tasks import (
     create_vectorstore_from_folder,
     create_vectorstore_uploaded_pdfs,
     delete_pdfs_from_vectorstore,
 )
+from agents.vir_chatbot.vir_chatbot import create_graph, load_global_vectorstore
 
 
 class RuntimeConfig(BaseModel):

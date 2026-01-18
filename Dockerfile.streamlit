@@ -1,16 +1,16 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-WORKDIR /app/streamlit_ui
+WORKDIR /app/frontend
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
-COPY streamlit_ui/pyproject.toml streamlit_ui/uv.lock ./
+COPY frontend/pyproject.toml frontend/uv.lock ./
 
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY streamlit_ui/*.py ./
+COPY frontend/*.py ./
 
-ENV PATH="/app/streamlit_ui/.venv/bin:$PATH"
+ENV PATH="/app/frontend/.venv/bin:$PATH"
 
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

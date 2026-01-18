@@ -130,6 +130,9 @@ cp .env.example .env
 # Start the services
 docker compose up --build
 
+# Start with development tools (Redis Commander)
+docker compose --profile dev up --build
+
 # To stop the services (Ctrl+C or in another terminal)
 docker compose down
 
@@ -156,13 +159,13 @@ docker run -d -p 6379:6379 --name redis-vir redis:7
 
 # In separate terminals, start:
 # 1. Celery Worker
-uv run celery -A tasks worker -l info
+uv run celery -A agents.vir_chatbot.tasks worker -l info
 
 # 2. FastAPI Backend
-uv run uvicorn streamlit_ui.api:app --host 0.0.0.0 --port 8000
+uv run uvicorn backend.api:app --host 0.0.0.0 --port 8000
 
 # 3. Streamlit Interface
-cd streamlit_ui && uv run streamlit run app.py
+cd frontend && uv run streamlit run app.py
 ```
 
 #### Installing uv (Python Package Manager)
@@ -202,8 +205,10 @@ SQLITE_MEMORY_DATABASE="/path/to/sqlite_folder"
 # Ports (Optional - defaults shown)
 WEB_PORT=8000
 REDIS_PORT=6379
-REDIS_COMMANDER_PORT=8081
 STREAMLIT_PORT=8501
+
+# Development only (used with --profile dev)
+REDIS_COMMANDER_PORT=8081
 
 # Streamlit UI Configuration
 API_BASE_URL="http://localhost:8000"  # Must match WEB_PORT
@@ -294,16 +299,17 @@ Vir_ChatBot/
 ├── agents/
 │   └── vir_chatbot/
 │       ├── vectorstore.py    # Vectorstore creation and management
-│       └── vir_chatbot.py    # Main LangGraph agent
-├── streamlit_ui/
-│   ├── api.py                # FastAPI endpoints
+│       ├── vir_chatbot.py    # Main LangGraph agent
+│       └── tasks.py          # Celery tasks (background)
+├── backend/
+│   └── api.py                # FastAPI endpoints
+├── frontend/
 │   └── app.py                # Streamlit interface
 ├── config.py                 # Configuration and environment variables
 ├── gemini.py                 # Gemini API wrapper
 ├── langgraph_functions.py    # Agent graph functions
 ├── prompts.py                # System prompts
 ├── schemas.py                # Response schemas
-├── tasks.py                  # Celery tasks (background)
 ├── tokenizer.py              # Tokenizer wrapper
 ├── compose.yaml              # Docker Compose
 ├── Dockerfile                # API Dockerfile

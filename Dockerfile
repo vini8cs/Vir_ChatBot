@@ -22,10 +22,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project --no-dev
 
-COPY . /app
+COPY config.py langgraph_functions.py gemini.py prompts.py schemas.py tokenizer.py /app/
+COPY backend/ /app/backend/
+COPY agents/vir_chatbot/ /app/agents/vir_chatbot/
 
 ENV PATH="/app/.venv/bin:$PATH"
 
 ENTRYPOINT []
 
-CMD ["uvicorn", "streamlit_ui.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]

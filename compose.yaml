@@ -20,7 +20,7 @@ services:
       - CACHE_FOLDER_PATH=/app/cache/
       - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
       - WEB_PORT=${WEB_PORT:-8000}
-    command: uvicorn streamlit_ui.api:app --host 0.0.0.0 --port ${WEB_PORT:-8000}
+    command: uvicorn backend.api:app --host 0.0.0.0 --port ${WEB_PORT:-8000}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${WEB_PORT:-8000}/health"]
       interval: 60s
@@ -32,7 +32,7 @@ services:
 
   worker:
     build: .
-    command: celery -A tasks worker -l info
+    command: celery -A agents.vir_chatbot.tasks worker -l info
     depends_on:
       - redis
     env_file:
@@ -59,7 +59,9 @@ services:
     command: redis-server --port ${REDIS_PORT:-6379}
   
   redis-commander:
-    image: rediscommander/redis-commander
+    profiles:
+      - dev
+    image: rediscommander/redis-commander:snyk-fix-08c85f17c94a7f00df6fb21e8ea1d10d
     environment:
       - REDIS_HOSTS=local:redis:${REDIS_PORT:-6379}
     ports:
