@@ -136,8 +136,8 @@ docker compose --profile dev up --build
 # To stop the services (Ctrl+C or in another terminal)
 docker compose down
 
-# To stop and remove all data (volumes)
-docker compose down -v
+# To stop and remove all data
+docker compose down --rmi all --volumes --remove-orphans
 ```
 
 ### Local Development
