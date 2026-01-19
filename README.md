@@ -104,7 +104,7 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 | Component | Size |
 |-----------|------|
 | **Docker images** (all services) | ~4-5 GB |
-| **Python dependencies** | ~2 GB |
+| **Python dependencies** | ~3 GB |
 | **Base system** | ~500 MB |
 | **Data volumes** (vectorstore, PDFs, cache) | Variable* |
 
