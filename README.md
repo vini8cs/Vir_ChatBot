@@ -305,12 +305,14 @@ Vir_ChatBot/
 │   └── api.py                # FastAPI endpoints
 ├── frontend/
 │   └── app.py                # Streamlit interface
+├── llms/
+│   ├── gemini.py             # Gemini API wrapper
+│   ├── langgraph_functions.py# Agent graph functions
+│   └── tokenizer.py          # Tokenizer wrapper
+├── templates/
+│   ├── prompts.py            # System prompts
+│   └── schemas.py            # Response schemas
 ├── config.py                 # Configuration and environment variables
-├── gemini.py                 # Gemini API wrapper
-├── langgraph_functions.py    # Agent graph functions
-├── prompts.py                # System prompts
-├── schemas.py                # Response schemas
-├── tokenizer.py              # Tokenizer wrapper
 ├── compose.yaml              # Docker Compose
 ├── Dockerfile                # API Dockerfile
 └── Dockerfile.streamlit      # Streamlit Dockerfile

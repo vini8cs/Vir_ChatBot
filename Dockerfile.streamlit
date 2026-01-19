@@ -1,5 +1,11 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p /app/frontend /app/vectorstore /app/pdfs /app/cache /app/db_data \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 WORKDIR /app/frontend
 
 ENV UV_COMPILE_BYTECODE=1

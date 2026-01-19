@@ -10,7 +10,7 @@ from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 import config as _
-from langgraph_functions import make_retrieve_tool, query_or_respond
+from llms.langgraph_functions import make_retrieve_tool, query_or_respond
 
 
 class Vir_ChatBot:

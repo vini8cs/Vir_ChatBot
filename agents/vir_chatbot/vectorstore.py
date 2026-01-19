@@ -13,10 +13,10 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 from langchain_community.vectorstores import FAISS
 
 import config as _
-from gemini import Gemini
-from prompts import PROMPT_IMAGE, PROMPT_TEXT
-from schemas import RESPONSE_SCHEMA
-from tokenizer import TokenizerWrapper
+from llms.gemini import Gemini
+from llms.tokenizer import TokenizerWrapper
+from templates.prompts import PROMPT_IMAGE, PROMPT_TEXT
+from templates.schemas import RESPONSE_SCHEMA
 
 
 class NoNewPDFError(Exception):

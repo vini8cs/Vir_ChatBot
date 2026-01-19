@@ -2,6 +2,7 @@ services:
   web:
     build: .
     image: vir-chatbot:latest
+    user: "1000:1000"
     ports:
       - "${WEB_PORT:-8000}:${WEB_PORT:-8000}"
     env_file:
@@ -34,6 +35,7 @@ services:
   worker:
     build: .
     image: vir-chatbot:latest
+    user: "1000:1000"
     command: celery -A agents.vir_chatbot.tasks worker -l info
     depends_on:
       - redis
@@ -74,6 +76,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.streamlit
+    user: "1000:1000"
     ports:
       - "${STREAMLIT_PORT:-8501}:${STREAMLIT_PORT:-8501}"
     env_file:

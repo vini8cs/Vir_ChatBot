@@ -48,7 +48,6 @@ class Gemini:
             return None
 
     def _create_sumarized_chain_text(self):
-
         self.summarize_chain_text = self.prompt | VertexAI(
             model_name=self.gemini_model,
             temperature=self.temperature,

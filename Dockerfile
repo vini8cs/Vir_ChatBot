@@ -29,9 +29,17 @@ RUN apt-get update && apt-get install -y \
        curl=7.88.1-10+deb12u14 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/.venv /app/.venv
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p /app/vectorstore /app/pdfs /app/cache /app/db_data /tmp/temp_uploads \
+    && chown -R appuser:appuser /app /tmp/temp_uploads
 
-COPY config.py langgraph_functions.py gemini.py prompts.py schemas.py tokenizer.py /app/
+USER appuser
+
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+
+COPY config.py /app/
+COPY llms/ /app/llms/
+COPY templates/ /app/templates/
 COPY backend/ /app/backend/
 COPY agents/vir_chatbot/ /app/agents/vir_chatbot/
 
