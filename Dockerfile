@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y \
        libxrender1 \
        libxext6 \
        gosu \
-       poppler-utils=22.12.0-2+deb12u1 \
+       poppler-utils \
        tesseract-ocr=5.3.0-2 \
        curl=7.88.1-10+deb12u14 \
     && rm -rf /var/lib/apt/lists/*
