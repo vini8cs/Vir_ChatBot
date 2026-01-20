@@ -112,17 +112,6 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 
 **Minimum recommended disk space**: **15 GB** (excluding your PDF documents)
 
-
-#### Supported Platforms
-
-| Platform | Architecture | Status |
-|----------|--------------|--------|
-| **Linux** | x86_64 (Intel/AMD 64-bit) | ✅ Fully supported |
-| **Linux** | aarch64 (ARM64) | ✅ Supported |
-| **Windows** | AMD64 (64-bit) | ✅ Supported |
-
-> ⚠️ **Note**: macOS is not currently supported due to PyTorch CPU wheel availability constraints.
-
 ---
 
 ## �🚀 Installation
@@ -178,6 +167,17 @@ uv run uvicorn backend.api:app --host 0.0.0.0 --port 8000
 # 3. Streamlit Interface
 cd frontend && uv run streamlit run app.py
 ```
+
+#### Supported Platforms for Local Development
+
+| Platform | Architecture | Status |
+|----------|--------------|--------|
+| **Linux** | x86_64 (Intel/AMD 64-bit) | ✅ Fully supported |
+| **Linux** | aarch64 (ARM64) | ✅ Supported |
+| **Windows** | AMD64 (64-bit) | ✅ Supported |
+
+> ⚠️ **Note**: macOS is not currently supported due to PyTorch CPU wheel availability constraints.
+
 
 #### Installing uv (Python Package Manager)
 
