@@ -138,7 +138,7 @@ docker compose down
 
 # To stop and remove all data
 docker compose down --rmi all --volumes --remove-orphans
-```
+``
 
 ### Local Development
 
@@ -213,6 +213,10 @@ REDIS_COMMANDER_PORT=8081
 # Streamlit UI Configuration
 API_BASE_URL="http://localhost:8000"  # Must match WEB_PORT
 
+# Container user permissions (Optional - defaults to 1000)
+PUID=1000
+PGID=1000
+
 # LangSmith (Optional - for tracing/debugging)
 LANGSMITH_API_KEY="your_langsmith_key"
 LANGSMITH_TRACING_V2=true
@@ -220,8 +224,35 @@ LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
 LANGSMITH_PROJECT="vir-chatbot"
 ```
 
+### Environment Variables Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | ✅ | — | Your Google Gemini API key for LLM and embeddings |
+| `GCP_CREDENTIALS` | ✅ | — | Path to your GCP service account JSON file |
+| `GCP_PROJECT` | ✅ | — | Your Google Cloud project ID |
+| `GCP_REGION` | ✅ | — | GCP region (e.g., `us-central1`) |
+| `PDF_FOLDER` | ❌ | — | Host path to a folder with PDFs (for batch import) |
+| `VECTORSTORE_PATH` | ✅ | — | Host path where FAISS vectorstore will be saved |
+| `CACHE_FOLDER_PATH` | ✅ | — | Host path for caching processed documents |
+| `SQLITE_MEMORY_DATABASE` | ✅ | — | Host path for SQLite database (conversation memory) |
+| `WEB_PORT` | ❌ | `8000` | Port for FastAPI backend |
+| `REDIS_PORT` | ❌ | `6379` | Port for Redis |
+| `STREAMLIT_PORT` | ❌ | `8501` | Port for Streamlit UI |
+| `REDIS_COMMANDER_PORT` | ❌ | `8081` | Port for Redis Commander (dev profile only) |
+| `API_BASE_URL` | ❌ | `http://localhost:8000` | Backend URL used by Streamlit (must match `WEB_PORT`) |
+| `PUID` | ❌ | `1000` | User ID for container process (must match host folder owner for bind mounts) |
+| `PGID` | ❌ | `1000` | Group ID for container process (must match host folder owner for bind mounts) |
+| `LANGSMITH_API_KEY` | ❌ | — | LangSmith API key for tracing/debugging |
+| `LANGSMITH_TRACING_V2` | ❌ | `false` | Enable LangSmith tracing |
+| `LANGSMITH_ENDPOINT` | ❌ | — | LangSmith API endpoint |
+| `LANGSMITH_PROJECT` | ❌ | — | LangSmith project name |
+
 > **📝 Note about `PDF_FOLDER`:**  
 > This variable is **optional**. It's useful if you want to create the VectorStore from a pre-existing folder with PDFs. However, you can also upload PDFs directly through the web interface or select individual files — the `PDF_FOLDER` is not required for the application to work.
+
+> **📝 Note about `PUID` and `PGID`:**  
+> When using bind mounts, Docker preserves the host's numeric owner IDs (UID/GID). If the container user doesn't match, permission errors will occur. Set `PUID` and `PGID` to match your host user. Check your IDs with `id` command (e.g., `uid=1000(username) gid=1000(username)`).
 
 ### Model Configuration
 

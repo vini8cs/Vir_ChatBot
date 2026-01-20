@@ -1,10 +1,16 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-RUN useradd --create-home --uid 1000 appuser \
+RUN useradd --create-home appuser \
     && mkdir -p /app/frontend /app/vectorstore /app/pdfs /app/cache /app/db_data \
     && chown -R appuser:appuser /app
 
-USER appuser
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 WORKDIR /app/frontend
 

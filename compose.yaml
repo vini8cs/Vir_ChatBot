@@ -2,7 +2,6 @@ services:
   web:
     build: .
     image: vir-chatbot:latest
-    user: "1000:1000"
     ports:
       - "${WEB_PORT:-8000}:${WEB_PORT:-8000}"
     env_file:
@@ -13,9 +12,11 @@ services:
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
-      - /tmp/temp_uploads:/tmp/temp_uploads
+      - temp_uploads:/tmp/temp_uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
@@ -35,7 +36,6 @@ services:
   worker:
     build: .
     image: vir-chatbot:latest
-    user: "1000:1000"
     command: celery -A agents.vir_chatbot.tasks worker -l info
     depends_on:
       - redis
@@ -47,9 +47,11 @@ services:
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
-      - /tmp/temp_uploads:/tmp/temp_uploads
+      - temp_uploads:/tmp/temp_uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
@@ -76,7 +78,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.streamlit
-    user: "1000:1000"
     ports:
       - "${STREAMLIT_PORT:-8501}:${STREAMLIT_PORT:-8501}"
     env_file:
@@ -89,6 +90,8 @@ services:
       - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
     environment:
       - PYTHONUNBUFFERED=1
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
@@ -100,3 +103,6 @@ services:
     depends_on:
       web:
         condition: service_healthy
+
+volumes:
+  temp_uploads:
