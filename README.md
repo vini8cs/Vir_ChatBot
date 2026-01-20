@@ -104,7 +104,7 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 | Component | Size |
 |-----------|------|
 | **Docker images** (all services) | ~4-5 GB |
-| **Python dependencies** | ~2 GB |
+| **Python dependencies** | ~3 GB |
 | **Base system** | ~500 MB |
 | **Data volumes** (vectorstore, PDFs, cache) | Variable* |
 
@@ -130,12 +130,15 @@ cp .env.example .env
 # Start the services
 docker compose up --build
 
+# Start with development tools (Redis Commander)
+docker compose --profile dev up --build
+
 # To stop the services (Ctrl+C or in another terminal)
 docker compose down
 
-# To stop and remove all data (volumes)
-docker compose down -v
-```
+# To stop and remove all data
+docker compose down --rmi all --volumes --remove-orphans
+``
 
 ### Local Development
 
@@ -156,13 +159,13 @@ docker run -d -p 6379:6379 --name redis-vir redis:7
 
 # In separate terminals, start:
 # 1. Celery Worker
-uv run celery -A tasks worker -l info
+uv run celery -A agents.vir_chatbot.tasks worker -l info
 
 # 2. FastAPI Backend
-uv run uvicorn streamlit_ui.api:app --host 0.0.0.0 --port 8000
+uv run uvicorn backend.api:app --host 0.0.0.0 --port 8000
 
 # 3. Streamlit Interface
-cd streamlit_ui && uv run streamlit run app.py
+cd frontend && uv run streamlit run app.py
 ```
 
 #### Installing uv (Python Package Manager)
@@ -202,11 +205,17 @@ SQLITE_MEMORY_DATABASE="/path/to/sqlite_folder"
 # Ports (Optional - defaults shown)
 WEB_PORT=8000
 REDIS_PORT=6379
-REDIS_COMMANDER_PORT=8081
 STREAMLIT_PORT=8501
+
+# Development only (used with --profile dev)
+REDIS_COMMANDER_PORT=8081
 
 # Streamlit UI Configuration
 API_BASE_URL="http://localhost:8000"  # Must match WEB_PORT
+
+# Container user permissions (Optional - defaults to 1000)
+PUID=1000
+PGID=1000
 
 # LangSmith (Optional - for tracing/debugging)
 LANGSMITH_API_KEY="your_langsmith_key"
@@ -215,8 +224,35 @@ LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
 LANGSMITH_PROJECT="vir-chatbot"
 ```
 
+### Environment Variables Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | ✅ | — | Your Google Gemini API key for LLM and embeddings |
+| `GCP_CREDENTIALS` | ✅ | — | Path to your GCP service account JSON file |
+| `GCP_PROJECT` | ✅ | — | Your Google Cloud project ID |
+| `GCP_REGION` | ✅ | — | GCP region (e.g., `us-central1`) |
+| `PDF_FOLDER` | ❌ | — | Host path to a folder with PDFs (for batch import) |
+| `VECTORSTORE_PATH` | ✅ | — | Host path where FAISS vectorstore will be saved |
+| `CACHE_FOLDER_PATH` | ✅ | — | Host path for caching processed documents |
+| `SQLITE_MEMORY_DATABASE` | ✅ | — | Host path for SQLite database (conversation memory) |
+| `WEB_PORT` | ❌ | `8000` | Port for FastAPI backend |
+| `REDIS_PORT` | ❌ | `6379` | Port for Redis |
+| `STREAMLIT_PORT` | ❌ | `8501` | Port for Streamlit UI |
+| `REDIS_COMMANDER_PORT` | ❌ | `8081` | Port for Redis Commander (dev profile only) |
+| `API_BASE_URL` | ❌ | `http://localhost:8000` | Backend URL used by Streamlit (must match `WEB_PORT`) |
+| `PUID` | ❌ | `1000` | User ID for container process (must match host folder owner for bind mounts) |
+| `PGID` | ❌ | `1000` | Group ID for container process (must match host folder owner for bind mounts) |
+| `LANGSMITH_API_KEY` | ❌ | — | LangSmith API key for tracing/debugging |
+| `LANGSMITH_TRACING_V2` | ❌ | `false` | Enable LangSmith tracing |
+| `LANGSMITH_ENDPOINT` | ❌ | — | LangSmith API endpoint |
+| `LANGSMITH_PROJECT` | ❌ | — | LangSmith project name |
+
 > **📝 Note about `PDF_FOLDER`:**  
 > This variable is **optional**. It's useful if you want to create the VectorStore from a pre-existing folder with PDFs. However, you can also upload PDFs directly through the web interface or select individual files — the `PDF_FOLDER` is not required for the application to work.
+
+> **📝 Note about `PUID` and `PGID`:**  
+> When using bind mounts, Docker preserves the host's numeric owner IDs (UID/GID). If the container user doesn't match, permission errors will occur. Set `PUID` and `PGID` to match your host user. Check your IDs with `id` command (e.g., `uid=1000(username) gid=1000(username)`).
 
 ### Model Configuration
 
@@ -294,17 +330,20 @@ Vir_ChatBot/
 ├── agents/
 │   └── vir_chatbot/
 │       ├── vectorstore.py    # Vectorstore creation and management
-│       └── vir_chatbot.py    # Main LangGraph agent
-├── streamlit_ui/
-│   ├── api.py                # FastAPI endpoints
+│       ├── vir_chatbot.py    # Main LangGraph agent
+│       └── tasks.py          # Celery tasks (background)
+├── backend/
+│   └── api.py                # FastAPI endpoints
+├── frontend/
 │   └── app.py                # Streamlit interface
+├── llms/
+│   ├── gemini.py             # Gemini API wrapper
+│   ├── langgraph_functions.py# Agent graph functions
+│   └── tokenizer.py          # Tokenizer wrapper
+├── templates/
+│   ├── prompts.py            # System prompts
+│   └── schemas.py            # Response schemas
 ├── config.py                 # Configuration and environment variables
-├── gemini.py                 # Gemini API wrapper
-├── langgraph_functions.py    # Agent graph functions
-├── prompts.py                # System prompts
-├── schemas.py                # Response schemas
-├── tasks.py                  # Celery tasks (background)
-├── tokenizer.py              # Tokenizer wrapper
 ├── compose.yaml              # Docker Compose
 ├── Dockerfile                # API Dockerfile
 └── Dockerfile.streamlit      # Streamlit Dockerfile

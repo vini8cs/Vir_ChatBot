@@ -1,6 +1,7 @@
 services:
   web:
     build: .
+    image: vir-chatbot:latest
     ports:
       - "${WEB_PORT:-8000}:${WEB_PORT:-8000}"
     env_file:
@@ -11,16 +12,18 @@ services:
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
-      - /tmp/temp_uploads:/tmp/temp_uploads
+      - temp_uploads:/tmp/temp_uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
       - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
       - WEB_PORT=${WEB_PORT:-8000}
-    command: uvicorn streamlit_ui.api:app --host 0.0.0.0 --port ${WEB_PORT:-8000}
+    command: uvicorn backend.api:app --host 0.0.0.0 --port ${WEB_PORT:-8000}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${WEB_PORT:-8000}/health"]
       interval: 60s
@@ -32,7 +35,8 @@ services:
 
   worker:
     build: .
-    command: celery -A tasks worker -l info
+    image: vir-chatbot:latest
+    command: celery -A agents.vir_chatbot.tasks worker -l info
     depends_on:
       - redis
     env_file:
@@ -43,9 +47,11 @@ services:
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
-      - /tmp/temp_uploads:/tmp/temp_uploads
+      - temp_uploads:/tmp/temp_uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
@@ -59,7 +65,9 @@ services:
     command: redis-server --port ${REDIS_PORT:-6379}
   
   redis-commander:
-    image: rediscommander/redis-commander
+    profiles:
+      - dev
+    image: rediscommander/redis-commander:latest
     environment:
       - REDIS_HOSTS=local:redis:${REDIS_PORT:-6379}
     ports:
@@ -82,6 +90,8 @@ services:
       - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
     environment:
       - PYTHONUNBUFFERED=1
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
       - PDF_FOLDER=/app/pdfs/
       - GCP_CREDENTIALS=/app/gcp_credentials.json
@@ -93,3 +103,6 @@ services:
     depends_on:
       web:
         condition: service_healthy
+
+volumes:
+  temp_uploads:

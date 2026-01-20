@@ -1,15 +1,6 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y libgl1-mesa-glx \
-    libglib2.0-0 \
-    libsm6 \
-    libxrender1 \
-    libxext6 \
-    poppler-utils \
-    tesseract-ocr \
-    curl
 
 ENV UV_COMPILE_BYTECODE=1
 
@@ -22,10 +13,41 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project --no-dev
 
-COPY . /app
+FROM python:3.12-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+       --no-install-recommends \
+       libgl1-mesa-glx \
+       libglib2.0-0 \
+       libsm6 \
+       libxrender1 \
+       libxext6 \
+       gosu \
+       poppler-utils \
+       tesseract-ocr=5.3.0-2 \
+       curl=7.88.1-10+deb12u14 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home appuser \
+    && mkdir -p /app/vectorstore /app/pdfs /app/cache /app/db_data /tmp/temp_uploads \
+    && chown -R appuser:appuser /app /tmp/temp_uploads
+
+
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+
+COPY config.py /app/
+COPY llms/ /app/llms/
+COPY templates/ /app/templates/
+COPY backend/ /app/backend/
+COPY agents/vir_chatbot/ /app/agents/vir_chatbot/
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-ENTRYPOINT []
-
-CMD ["uvicorn", "streamlit_ui.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]

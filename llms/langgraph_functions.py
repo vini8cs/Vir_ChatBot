@@ -5,7 +5,7 @@ from langgraph.graph import MessagesState
 from langgraph.store.base import BaseStore
 from toon import encode
 
-from prompts import TOOL_CALLER_PROMPT
+from templates.prompts import TOOL_CALLER_PROMPT
 
 
 def make_retrieve_tool(retriever):
