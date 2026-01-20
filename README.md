@@ -112,6 +112,17 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 
 **Minimum recommended disk space**: **15 GB** (excluding your PDF documents)
 
+
+#### Supported Platforms
+
+| Platform | Architecture | Status |
+|----------|--------------|--------|
+| **Linux** | x86_64 (Intel/AMD 64-bit) | ✅ Fully supported |
+| **Linux** | aarch64 (ARM64) | ✅ Supported |
+| **Windows** | AMD64 (64-bit) | ✅ Supported |
+
+> ⚠️ **Note**: macOS is not currently supported due to PyTorch CPU wheel availability constraints.
+
 ---
 
 ## �🚀 Installation
@@ -138,7 +149,7 @@ docker compose down
 
 # To stop and remove all data
 docker compose down --rmi all --volumes --remove-orphans
-``
+```
 
 ### Local Development
 
