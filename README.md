@@ -9,18 +9,89 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 
 ---
 
-## 📋 Table of Contents
+## 📦 Prerequisites
 
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Prerequisites](#-prerequisites)
-- [System Requirements](#-system-requirements)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Usage](#-usage)
-- [Project Structure](#-project-structure)
-- [Technologies](#-technologies)
-- [License](#-license)
+- **Docker** and **Docker Compose** (recommended)
+- **Python 3.12+** (for local development)
+- **[uv](https://docs.astral.sh/uv/)** - Fast Python package manager (for local development)
+- **Google Cloud Account** with access to Gemini/Vertex AI API
+- **GCP Credentials** (service account JSON file)
+
+---
+
+## �🚀 Installation and Use
+
+### Clone the repository
+
+```bash
+git clone https://github.com/vini8cs/Vir_ChatBot.git
+cd Vir_ChatBot
+```
+
+### Install and Run via Docker Compose (Recommended)
+
+Configure environment variables and edit the .env file with your credentials
+
+```bash
+cp .env.example .env
+```
+Start the services
+
+```bash
+docker compose up --build
+```
+
+Start with development tools (Redis Commander)
+```bash
+docker compose --profile dev up --build
+```
+
+To stop the services (Ctrl+C or in another terminal)
+```bash
+docker compose down
+```
+
+To stop and remove all data
+```bash
+docker compose down --rmi all --volumes --remove-orphans
+```
+
+### Local Development (without Docker Compose)
+
+
+Install dependencies with uv
+
+```bash
+uv sync
+```
+Configure environment variables and edit the .env file with your credentials
+
+```bash
+cp .env.example .env
+```
+Start Redis (required for Celery)
+
+```bash
+docker run -d -p 6379:6379 --name redis-vir redis:7
+```
+
+In separate terminals, start:
+
+1. Celery Worker
+
+```bash
+uv run celery -A agents.vir_chatbot.tasks worker -l info
+```
+
+2. FastAPI Backend
+```bash
+uv run uvicorn backend.api:app --host 0.0.0.0 --port 8000
+```
+
+3. Streamlit Interface
+```bash
+cd frontend && uv run streamlit run app.py
+```
 
 ---
 
@@ -68,16 +139,6 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 
 ---
 
-## 📦 Prerequisites
-
-- **Docker** and **Docker Compose** (recommended)
-- **Python 3.12+** (for local development)
-- **[uv](https://docs.astral.sh/uv/)** - Fast Python package manager (for local development)
-- **Google Cloud Account** with access to Gemini/Vertex AI API
-- **GCP Credentials** (service account JSON file)
-
----
-
 ## � System Requirements
 
 ### Memory (RAM)
@@ -112,62 +173,6 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 
 **Minimum recommended disk space**: **15 GB** (excluding your PDF documents)
 
----
-
-## �🚀 Installation
-
-### Via Docker Compose (Recommended)
-
-```bash
-# Clone the repository
-git clone https://github.com/vini8cs/Vir_ChatBot.git
-cd Vir_ChatBot
-
-# Configure environment variables
-cp .env.example .env
-# Edit the .env file with your credentials
-
-# Start the services
-docker compose up --build
-
-# Start with development tools (Redis Commander)
-docker compose --profile dev up --build
-
-# To stop the services (Ctrl+C or in another terminal)
-docker compose down
-
-# To stop and remove all data
-docker compose down --rmi all --volumes --remove-orphans
-```
-
-### Local Development
-
-```bash
-# Clone the repository
-git clone https://github.com/vini8cs/Vir_ChatBot.git
-cd Vir_ChatBot
-
-# Install dependencies with uv
-uv sync
-
-# Configure environment variables
-cp .env.example .env
-# Edit the .env file with your credentials
-
-# Start Redis (required for Celery)
-docker run -d -p 6379:6379 --name redis-vir redis:7
-
-# In separate terminals, start:
-# 1. Celery Worker
-uv run celery -A agents.vir_chatbot.tasks worker -l info
-
-# 2. FastAPI Backend
-uv run uvicorn backend.api:app --host 0.0.0.0 --port 8000
-
-# 3. Streamlit Interface
-cd frontend && uv run streamlit run app.py
-```
-
 #### Supported Platforms for Local Development
 
 | Platform | Architecture | Status |
@@ -177,22 +182,6 @@ cd frontend && uv run streamlit run app.py
 | **Windows** | AMD64 (64-bit) | ✅ Supported |
 
 > ⚠️ **Note**: macOS is not currently supported due to PyTorch CPU wheel availability constraints.
-
-
-#### Installing uv (Python Package Manager)
-
-This project uses **[uv](https://docs.astral.sh/uv/)** for fast and reliable Python package management. If you don't have it installed:
-
-```bash
-# Linux/macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Or via pip
-pip install uv
-```
 
 ---
 
