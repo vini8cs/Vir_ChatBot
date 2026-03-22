@@ -20,7 +20,6 @@ from pydantic import BaseModel, Field
 import config as _
 from agents.vir_chatbot.tasks import app as celery_app
 from agents.vir_chatbot.tasks import (
-    create_vectorstore_from_folder,
     create_vectorstore_uploaded_pdfs,
     delete_pdfs_from_vectorstore,
 )
@@ -31,32 +30,32 @@ class RuntimeConfig(BaseModel):
     """Runtime configuration that can be modified via API."""
 
     gemini_model: str = _.GEMINI_MODEL
-    embedding_model: str = _.EMBEDDING_MODEL
     temperature: float = _.TEMPERATURE
     max_output_tokens: int = _.MAX_OUTPUT_TOKENS
-    token_size: int = _.TOKEN_SIZE
     max_retries: int = _.MAX_RETRIES
+    retriever_limit: int = _.RETRIEVER_LIMIT
+    summarize: bool = _.SUMMARIZE
+    system_prompt: str = _.SYSTEM_PROMPT
+    embedding_model: str = _.EMBEDDING_MODEL
+    token_size: int = _.TOKEN_SIZE
     tokenizer_model: str = _.TOKENIZER_MODEL
     threads: int = _.THREADS
-    summarize: bool = _.SUMMARIZE
-    retriever_limit: int = _.RETRIEVER_LIMIT
-    system_prompt: str = _.SYSTEM_PROMPT
 
 
 class ConfigUpdateRequest(BaseModel):
     """Request model for updating configuration."""
 
     gemini_model: str | None = None
-    embedding_model: str | None = None
     temperature: float | None = None
     max_output_tokens: int | None = None
-    token_size: int | None = None
     max_retries: int | None = None
+    retriever_limit: int | None = None
+    summarize: bool | None = None
+    system_prompt: str | None = None
+    embedding_model: str | None = None
+    token_size: int | None = None
     tokenizer_model: str | None = None
     threads: int | None = None
-    summarize: bool | None = None
-    retriever_limit: int | None = None
-    system_prompt: str | None = None
 
 
 class HealthCheckFilter(logging.Filter):
@@ -96,6 +95,31 @@ TEMP_UPLOAD_DIR = "/tmp/temp_uploads"
 Path(TEMP_UPLOAD_DIR).mkdir(exist_ok=True)
 
 
+def _load_persisted_config() -> RuntimeConfig:
+    """Load runtime config from JSON file, falling back to defaults."""
+    config_path = _.RUNTIME_CONFIG_PATH
+    if not os.path.exists(config_path):
+        return RuntimeConfig()
+    try:
+        with open(config_path) as f:
+            data = json.load(f)
+        return RuntimeConfig(**data)
+    except Exception as e:
+        logging.warning(f"Could not load persisted config, using defaults: {e}")
+        return RuntimeConfig()
+
+
+def _save_persisted_config(config: RuntimeConfig) -> None:
+    """Persist runtime config to JSON file."""
+    config_path = _.RUNTIME_CONFIG_PATH
+    try:
+        Path(config_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w") as f:
+            json.dump(config.model_dump(), f, indent=2)
+    except Exception as e:
+        logging.warning(f"Could not persist config: {e}")
+
+
 async def turn_wal_mode_on():
     logging.info("Initializing SQLite with WAL mode...")
     try:
@@ -112,6 +136,10 @@ async def turn_wal_mode_on():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global runtime_config
+    runtime_config = _load_persisted_config()
+    logging.info("Runtime config loaded.")
+
     await turn_wal_mode_on()
 
     logging.info("Loading VectorStore into memory...")
@@ -161,6 +189,7 @@ async def update_config(request: ConfigUpdateRequest):
     current_config = runtime_config.model_dump()
     current_config.update(update_data)
     runtime_config = RuntimeConfig(**current_config)
+    _save_persisted_config(runtime_config)
 
     return {
         "status": "success",
@@ -177,6 +206,7 @@ async def reset_config():
     """
     global runtime_config
     runtime_config = RuntimeConfig()
+    _save_persisted_config(runtime_config)
 
     return {
         "status": "success",
@@ -193,6 +223,7 @@ async def reset_config_and_reload():
     """
     global runtime_config
     runtime_config = RuntimeConfig()
+    _save_persisted_config(runtime_config)
 
     try:
         global_resources["retriever"] = await load_global_vectorstore()
@@ -297,22 +328,6 @@ async def delete_pdfs(request: DeleteFileRequest):
         "message": "Deletion process started in background.",
         "task_id": task.id,
         "files_to_delete": request.filenames,
-    }
-
-
-@app.post("/create-vectorstore-from-folder/")
-async def create_vectorstore_from_folder_endpoint():
-    """
-    Create vectorstore from zero using PDF_FOLDER path in .env
-    """
-    task = create_vectorstore_from_folder.delay(
-        summarize=runtime_config.summarize,
-        gemini_model=runtime_config.gemini_model,
-    )
-
-    return {
-        "message": "VectorStore creation from folder started in background.",
-        "task_id": task.id,
     }
 
 

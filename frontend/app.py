@@ -176,18 +176,6 @@ async def upload_pdfs_api(files) -> dict:
             return {"error": str(e)}
 
 
-async def create_vectorstore_from_folder_api() -> dict:
-    """Create vectorstore from folder."""
-    url = f"{API_BASE_URL}/create-vectorstore-from-folder/"
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url)
-            response.raise_for_status()
-            return response.json()
-        except (httpx.HTTPStatusError, httpx.RequestError) as e:
-            return {"error": str(e)}
-
-
 async def delete_pdfs_api(filenames: list) -> dict:
     """Delete PDFs from vectorstore."""
     url = f"{API_BASE_URL}/delete-selected-pdfs/"
@@ -534,8 +522,8 @@ async def render_task_progress():
         # Users must manually click "Refresh" to refresh task progress
 
 
-def model_selection(config=None, key="config_model"):
-    current_model = config.get("gemini_model", "gemini-2.5-flash")
+def model_selection(config=None, key="config_model", config_field="gemini_model"):
+    current_model = config.get(config_field, "gemini-2.5-flash")
     model_index = GEMINI_MODELS.index(current_model) if current_model in GEMINI_MODELS else 0
     return st.selectbox(
         "🧬 Gemini Model",
@@ -557,12 +545,12 @@ def temperature_slider(config=None, key="config_temperature"):
     )
 
 
-def max_tokens_input(config=None, key="config_max_tokens"):
+def max_tokens_input(config=None, key="config_max_tokens", config_field="max_output_tokens"):
     return st.number_input(
         "📝 Max Output Tokens",
         min_value=256,
         max_value=8192,
-        value=int(config.get("max_output_tokens", 2048)),
+        value=int(config.get(config_field, 2048)),
         step=256,
         key=key,
     )
@@ -599,6 +587,17 @@ def summarize_toggle(config=None, key="config_summarize"):
     )
 
 
+_CONFIG_WIDGET_KEYS = (
+    "config_model",
+    "config_temperature",
+    "config_max_tokens",
+    "config_retriever_limit",
+    "config_max_retries",
+    "config_summarize",
+    "prompt_editor",
+)
+
+
 async def run_save_config(config_changed, updates, key="save_config"):
     if st.button(
         "💾 Save",
@@ -613,6 +612,8 @@ async def run_save_config(config_changed, updates, key="save_config"):
         else:
             st.success("✅ Configuration saved!")
             st.session_state.runtime_config = result.get("config", await get_config_api())
+            for widget_key in _CONFIG_WIDGET_KEYS:
+                st.session_state.pop(widget_key, None)
             st.rerun()
 
 
@@ -653,12 +654,8 @@ def make_reset_config_callback(keys_prefix: str = "config"):
                 return
             new_config = await get_config_api()
             st.session_state.runtime_config = new_config
-            st.session_state[f"{keys_prefix}_model"] = new_config.get("gemini_model", "gemini-2.5-flash")
-            st.session_state[f"{keys_prefix}_temperature"] = float(new_config.get("temperature", 0.1))
-            st.session_state[f"{keys_prefix}_max_tokens"] = int(new_config.get("max_output_tokens", 2048))
-            st.session_state[f"{keys_prefix}_retriever_limit"] = int(new_config.get("retriever_limit", 5))
-            st.session_state[f"{keys_prefix}_max_retries"] = int(new_config.get("max_retries", 3))
-            st.session_state[f"{keys_prefix}_summarize"] = bool(new_config.get("summarize", False))
+            for widget_key in _CONFIG_WIDGET_KEYS:
+                st.session_state.pop(widget_key, None)
             st.session_state[f"{keys_prefix}_reset_success"] = True
 
         try:
@@ -759,52 +756,6 @@ async def run_upload_pdfs_vectorstore():
             return
 
 
-async def run_create_from_folder_vectorstore():
-    if st.button("📁 Create VectorStore from Folder", use_container_width=True):
-        with st.spinner("Starting creation..."):
-            result = await create_vectorstore_from_folder_api()
-            if "error" in result:
-                return st.error(f"Error: {result['error']}")
-            st.success(f"✅ {result.get('message', 'Process started!')}")
-            task_id = result.get("task_id")
-            if task_id:
-                add_active_task(task_id, "Create VectorStore from Folder")
-                st.rerun()
-
-
-async def run_vectorstore_settings():
-    config = st.session_state.runtime_config
-    if "error" in config:
-        return st.error(f"Error loading config: {config['error']}")
-
-    new_model = model_selection(config, key="vs_config_model")
-    new_summarize = summarize_toggle(config, key="vs_config_summarize")
-    new_max_tokens = max_tokens_input(config, key="vs_config_max_tokens")
-
-    config_changed = (
-        new_model != config.get("gemini_model")
-        or new_summarize != config.get("summarize")
-        or new_max_tokens != config.get("max_output_tokens")
-    )
-
-    updates = {
-        "gemini_model": new_model,
-        "summarize": new_summarize,
-        "max_output_tokens": new_max_tokens,
-    }
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        await run_save_config(config_changed, updates, key="vs_save_config")
-
-    with col2:
-        run_reset_config(key="vs_reset_config", keys_prefix="vs_config")
-
-    if config_changed:
-        st.info("💡 You have unsaved changes")
-
-
 async def check_selected_pdfs():
     if st.button("🔄 Refresh List", use_container_width=True, key="refresh_pdfs"):
         st.session_state.pdf_list = await list_pdfs_api()
@@ -865,6 +816,7 @@ async def run_llm_config():
             new_max_tokens = max_tokens_input(config)
             new_retriever_limit = retriever_limit_input(config)
             new_max_retries = max_retries_input(config)
+            new_summarize = summarize_toggle(config, key="config_summarize")
 
             st.divider()
 
@@ -874,6 +826,7 @@ async def run_llm_config():
                 or new_max_tokens != config.get("max_output_tokens")
                 or new_retriever_limit != config.get("retriever_limit")
                 or new_max_retries != config.get("max_retries")
+                or new_summarize != config.get("summarize")
             )
 
             updates = {
@@ -882,6 +835,7 @@ async def run_llm_config():
                 "max_output_tokens": new_max_tokens,
                 "retriever_limit": new_retriever_limit,
                 "max_retries": new_max_retries,
+                "summarize": new_summarize,
             }
 
             col1, col2 = st.columns(2)
@@ -986,18 +940,7 @@ async def main():
         await run_reload_vectorstore()
 
         with st.expander("➕ Create VectorStore", expanded=False):
-            st.markdown("**Option 1: Upload Files**")
             await run_upload_pdfs_vectorstore()
-
-            st.markdown("---")
-            st.markdown("**Option 2: Create from Folder**")
-            st.caption("Creates the VectorStore from the configured documents folder.")
-            await run_create_from_folder_vectorstore()
-
-            st.markdown("---")
-            st.markdown("**VectorStore Settings**")
-            st.caption("Define if the summarization of context with AI should be enabled during VectorStore creation.")
-            await run_vectorstore_settings()
 
         with st.expander("📋 Documents in VectorStore", expanded=False):
             await check_selected_pdfs()
