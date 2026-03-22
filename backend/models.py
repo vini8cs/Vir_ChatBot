@@ -49,12 +49,18 @@ class DeleteFileRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    thread_id: str = Field(..., description="Unique ID for the conversation thread")
-    user_id: str = Field("default_user", description="User ID for personalization")
+    thread_id: str = Field(
+        ..., description="Unique ID for the conversation thread"
+    )
+    user_id: str = Field(
+        "default_user", description="User ID for personalization"
+    )
 
 
 class CreateThreadRequest(BaseModel):
-    user_id: str = Field(..., description="User ID to associate with the thread")
+    user_id: str = Field(
+        ..., description="User ID to associate with the thread"
+    )
 
 
 class ThreadResponse(BaseModel):

@@ -8,10 +8,17 @@ import uuid
 
 import pandas as pd
 from docling.chunking import HybridChunker
-from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
+from docling.datamodel.accelerator_options import (
+    AcceleratorDevice,
+    AcceleratorOptions,
+)
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
+from docling.document_converter import (
+    DocumentConverter,
+    ImageFormatOption,
+    PdfFormatOption,
+)
 from langchain_community.vectorstores import FAISS
 from PIL import Image as PILImage
 
@@ -21,7 +28,16 @@ from llms.tokenizer import TokenizerWrapper
 from templates.prompts import PROMPT_IMAGE, PROMPT_TEXT
 from templates.schemas import RESPONSE_SCHEMA
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png", ".txt", ".tsv"}
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".txt",
+    ".tsv",
+}
 DOCLING_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png"}
 
 
@@ -115,19 +131,25 @@ class VectorStoreCreator(Gemini):
 
     def _start_docling_config(self):
         logging.info("Starting docling configuration...")
-        self.tokenizer_tool = TokenizerWrapper(model_name=self.tokenizer_model, max_length=self.token_size)
+        self.tokenizer_tool = TokenizerWrapper(
+            model_name=self.tokenizer_model, max_length=self.token_size
+        )
         self.chunker = HybridChunker(
             tokenizer=self.tokenizer_tool,
             max_tokens=self.token_size,
             merge_peers=True,
         )
-        accelerator_options = AcceleratorOptions(num_threads=self.threads, device=AcceleratorDevice.CPU)
+        accelerator_options = AcceleratorOptions(
+            num_threads=self.threads, device=AcceleratorDevice.CPU
+        )
         pipeline_options = PdfPipelineOptions(generate_picture_images=True)
         pipeline_options.accelerator_options = accelerator_options
         pipeline_options.enable_remote_services = True
         self.converter = DocumentConverter(
             format_options={
-                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
+                InputFormat.PDF: PdfFormatOption(
+                    pipeline_options=pipeline_options
+                ),
                 InputFormat.IMAGE: ImageFormatOption(),
             }
         )
@@ -139,7 +161,9 @@ class VectorStoreCreator(Gemini):
             lambda x: json.dumps(x) if not isinstance(x, str) else x
         )
         file_exists = os.path.exists(self.cache)
-        chache_to_save.to_csv(self.cache, mode="a", index=False, header=not file_exists)
+        chache_to_save.to_csv(
+            self.cache, mode="a", index=False, header=not file_exists
+        )
 
     def _reformat_chache_after_deletion(self):
         logging.info("Reformatting cache after deletions...")
@@ -154,7 +178,9 @@ class VectorStoreCreator(Gemini):
         self.cache_df = pd.read_csv(self.cache)
         self.cache_df["metadata"] = self.cache_df["metadata"].apply(json.loads)
 
-        self.pdf_list = set(self.cache_df["metadata"].apply(lambda x: x["filename"]))
+        self.pdf_list = set(
+            self.cache_df["metadata"].apply(lambda x: x["filename"])
+        )
 
     def _check_chache(self):
         logging.info(f"Checking if cache exists {self.cache}...")
@@ -162,25 +188,37 @@ class VectorStoreCreator(Gemini):
 
     def _diff_vs_cache(self):
         logging.info("Diffing PDFs vs Cache...")
-        self.pdf_paths = [pdf_path for pdf_path in self.pdf_paths if os.path.basename(pdf_path) not in self.pdf_list]
+        self.pdf_paths = [
+            pdf_path
+            for pdf_path in self.pdf_paths
+            if os.path.basename(pdf_path) not in self.pdf_list
+        ]
         if len(self.pdf_paths) == 0:
             raise NoNewPDFError()
 
     def recover_deleted_pdfs_from_cache(self):
         logging.info("Recovering deleted PDFs from cache...")
 
-        filenames_to_delete = [os.path.basename(pdf) for pdf in self.pdf_to_delete]
+        filenames_to_delete = [
+            os.path.basename(pdf) for pdf in self.pdf_to_delete
+        ]
 
         self.cache_to_delete = self.cache_df[
-            self.cache_df["metadata"].apply(lambda x: x["filename"] in filenames_to_delete)
+            self.cache_df["metadata"].apply(
+                lambda x: x["filename"] in filenames_to_delete
+            )
         ]
         if self.cache_to_delete.empty:
             raise NoCacheFoundError()
 
         self.uudis_to_remove = self.cache_to_delete["id"].unique().tolist()
-        self.filtered_df = self.cache_df[~self.cache_df["id"].isin(self.uudis_to_remove)].reset_index(drop=True)
+        self.filtered_df = self.cache_df[
+            ~self.cache_df["id"].isin(self.uudis_to_remove)
+        ].reset_index(drop=True)
 
-        logging.info(f"Found {len(self.uudis_to_remove)} UUIDs to delete from vectorstore")
+        logging.info(
+            f"Found {len(self.uudis_to_remove)} UUIDs to delete from vectorstore"
+        )
 
     def delete_uuids_from_vectorstore(self):
         logging.info("Deleting UUIDs from vectorstore...")
@@ -196,7 +234,9 @@ class VectorStoreCreator(Gemini):
         self.pdf_paths = []
         for root, _loop, files in os.walk(self.pdf_folder):
             for f in files:
-                if not any(f.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+                if not any(
+                    f.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS
+                ):
                     continue
                 self.pdf_paths.append(os.path.join(root, f))
 
@@ -214,7 +254,13 @@ class VectorStoreCreator(Gemini):
                     {
                         "id": str(uuid.uuid1()),
                         "contents": " ".join(chunk_words),
-                        "metadata": json.dumps({"filename": filename, "page_numbers": None, "title": None}),
+                        "metadata": json.dumps(
+                            {
+                                "filename": filename,
+                                "page_numbers": None,
+                                "title": None,
+                            }
+                        ),
                     }
                 )
                 chunk_words = []
@@ -223,7 +269,13 @@ class VectorStoreCreator(Gemini):
                 {
                     "id": str(uuid.uuid1()),
                     "contents": " ".join(chunk_words),
-                    "metadata": json.dumps({"filename": filename, "page_numbers": None, "title": None}),
+                    "metadata": json.dumps(
+                        {
+                            "filename": filename,
+                            "page_numbers": None,
+                            "title": None,
+                        }
+                    ),
                 }
             )
         return chunks
@@ -231,13 +283,21 @@ class VectorStoreCreator(Gemini):
     def _chunk_tsv(self, file_path):
         filename = os.path.basename(file_path)
         df = pd.read_csv(file_path, sep="\t")
-        metadata = json.dumps({"filename": filename, "page_numbers": None, "title": None})
+        metadata = json.dumps(
+            {"filename": filename, "page_numbers": None, "title": None}
+        )
 
         def row_to_chunk(row):
-            row_text = " | ".join(f"{col}: {val}" for col, val in row.items() if pd.notna(val))
+            row_text = " | ".join(
+                f"{col}: {val}" for col, val in row.items() if pd.notna(val)
+            )
             if not row_text.strip():
                 return None
-            return {"id": str(uuid.uuid1()), "contents": row_text, "metadata": metadata}
+            return {
+                "id": str(uuid.uuid1()),
+                "contents": row_text,
+                "metadata": metadata,
+            }
 
         return [c for c in df.apply(row_to_chunk, axis=1) if c is not None]
 
@@ -251,10 +311,18 @@ class VectorStoreCreator(Gemini):
                         {
                             "filename": os.path.basename(filename),
                             "page_numbers": sorted(
-                                {prov.page_no for item in chunk.meta.doc_items for prov in item.prov}
+                                {
+                                    prov.page_no
+                                    for item in chunk.meta.doc_items
+                                    for prov in item.prov
+                                }
                             )
                             or None,
-                            "title": (chunk.meta.headings[0] if chunk.meta.headings else None),
+                            "title": (
+                                chunk.meta.headings[0]
+                                if chunk.meta.headings
+                                else None
+                            ),
                         }
                     ),
                 }
@@ -263,13 +331,18 @@ class VectorStoreCreator(Gemini):
 
         def extract_image_from_chunk(picture, filename):
             image_uri = str(
-                picture.image.get("uri") if isinstance(picture.image, dict) else getattr(picture.image, "uri", None)
+                picture.image.get("uri")
+                if isinstance(picture.image, dict)
+                else getattr(picture.image, "uri", None)
             )
 
             if image_uri.startswith("data:") and "base64," in image_uri:
                 image_uri = image_uri.split("base64,")[-1]
 
-            page_numbers = sorted({prov.page_no for prov in getattr(picture, "prov", [])}) or None
+            page_numbers = (
+                sorted({prov.page_no for prov in getattr(picture, "prov", [])})
+                or None
+            )
 
             return {
                 "id": str(uuid.uuid1()),
@@ -319,8 +392,12 @@ class VectorStoreCreator(Gemini):
     def summarization_process(self, df, content):
         def filter_reference_info(df):
             df_copy = df.copy()
-            filtered_df = df_copy[df_copy["isReference"].astype(str).str.lower() == "false"]
-            return filtered_df.drop(columns="isReference").reset_index(drop=True)
+            filtered_df = df_copy[
+                df_copy["isReference"].astype(str).str.lower() == "false"
+            ]
+            return filtered_df.drop(columns="isReference").reset_index(
+                drop=True
+            )
 
         logging.info(f"Starting summarization process for {content} content...")
 
@@ -330,7 +407,9 @@ class VectorStoreCreator(Gemini):
         if not self.summarize and content != "image":
             logging.info("Skipping summarization...")
             summarized_df = df.copy()
-            summarized_df["summary"] = summarized_df["contents"].apply(self.clean_text)
+            summarized_df["summary"] = summarized_df["contents"].apply(
+                self.clean_text
+            )
             return summarized_df
         logging.info("Summarizing chunks...")
         summarized_df = self._summarize_df(df, content=content)
@@ -338,18 +417,26 @@ class VectorStoreCreator(Gemini):
 
     def _summarize_df(self, df, content="text"):
         def update_metadata_and_summary(df):
-            flat = pd.json_normalize(df["summarized_content"]).reset_index(drop=True)
+            flat = pd.json_normalize(df["summarized_content"]).reset_index(
+                drop=True
+            )
             df = df.reset_index(drop=True)
             df = df.join(flat)
             return df.drop(columns=["summarized_content"])
 
         processed_df = df.copy()
         processed_df["summarized_content"] = processed_df["contents"].apply(
-            self._generate_text_summaries if content == "text" else self._genenate_image_summaries
+            self._generate_text_summaries
+            if content == "text"
+            else self._genenate_image_summaries
         )
         processed_df = processed_df.dropna(subset=["summarized_content"])
-        processed_df["summarized_content"] = processed_df["summarized_content"].apply(
-            lambda x: json.loads(x)[0] if isinstance(json.loads(x), list) and len(json.loads(x)) > 0 else None
+        processed_df["summarized_content"] = processed_df[
+            "summarized_content"
+        ].apply(
+            lambda x: json.loads(x)[0]
+            if isinstance(json.loads(x), list) and len(json.loads(x)) > 0
+            else None
         )
         return update_metadata_and_summary(processed_df)
 
@@ -364,25 +451,35 @@ class VectorStoreCreator(Gemini):
             elif ext == ".tsv":
                 all_text_chunks.extend(self._chunk_tsv(pdf_path))
             else:
-                text_chunks, image_chunks = self._chunking_documents_with_docling(pdf_path)
+                text_chunks, image_chunks = (
+                    self._chunking_documents_with_docling(pdf_path)
+                )
                 all_text_chunks.extend(text_chunks)
                 all_image_chunks.extend(image_chunks)
 
         text_chunks_df = pd.DataFrame(all_text_chunks)
         image_chunks_df = pd.DataFrame(all_image_chunks)
 
-        text_summarized = self.summarization_process(text_chunks_df, content="text")
-        image_summarized = self.summarization_process(image_chunks_df, content="image")
+        text_summarized = self.summarization_process(
+            text_chunks_df, content="text"
+        )
+        image_summarized = self.summarization_process(
+            image_chunks_df, content="image"
+        )
 
         logging.info(f"Text chunks: {len(text_summarized)}")
         logging.info(f"Image chunks: {len(image_summarized)}")
 
-        merged_df = pd.concat([text_summarized, image_summarized]).reset_index(drop=True)
+        merged_df = pd.concat([text_summarized, image_summarized]).reset_index(
+            drop=True
+        )
         self.filtered_df = merged_df.dropna(subset=["summary"])
 
     def _check_vectorstore_exists(self):
         logging.info("Checking if vectorstore exist...")
-        return os.path.exists(self.vectorstore_path) and os.listdir(self.vectorstore_path)
+        return os.path.exists(self.vectorstore_path) and os.listdir(
+            self.vectorstore_path
+        )
 
     def _load_faiss_vectorstore(self):
         logging.info("Loading vectorstore...")
@@ -397,7 +494,8 @@ class VectorStoreCreator(Gemini):
 
         self.texts_for_vectorstore = self.filtered_df["summary"].tolist()
         self.metadatas_for_vectorstore = [
-            json.loads(m) if isinstance(m, str) else m for m in self.filtered_df["metadata"]
+            json.loads(m) if isinstance(m, str) else m
+            for m in self.filtered_df["metadata"]
         ]
         self.ids_for_vectorstore = self.filtered_df["id"].tolist()
 

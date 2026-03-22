@@ -17,7 +17,9 @@ async def threads_management_sidebar():
 
         col1, col2 = st.columns([5, 1])
         with col1:
-            button_label = f"{'✅ ' if is_selected else '💬 '}{thread_id[:8]}..."
+            button_label = (
+                f"{'✅ ' if is_selected else '💬 '}{thread_id[:8]}..."
+            )
             if st.button(
                 button_label,
                 key=f"select_{thread_id}",

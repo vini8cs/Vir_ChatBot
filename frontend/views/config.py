@@ -22,9 +22,15 @@ _CONFIG_WIDGET_KEYS = (
 )
 
 
-def model_selection(config=None, key="config_model", config_field="gemini_model"):
+def model_selection(
+    config=None, key="config_model", config_field="gemini_model"
+):
     current_model = config.get(config_field, "gemini-2.5-flash")
-    model_index = GEMINI_MODELS.index(current_model) if current_model in GEMINI_MODELS else 0
+    model_index = (
+        GEMINI_MODELS.index(current_model)
+        if current_model in GEMINI_MODELS
+        else 0
+    )
     return st.selectbox(
         "🧬 Gemini Model",
         options=GEMINI_MODELS,
@@ -45,7 +51,9 @@ def temperature_slider(config=None, key="config_temperature"):
     )
 
 
-def max_tokens_input(config=None, key="config_max_tokens", config_field="max_output_tokens"):
+def max_tokens_input(
+    config=None, key="config_max_tokens", config_field="max_output_tokens"
+):
     return st.number_input(
         "📝 Max Output Tokens",
         min_value=256,
@@ -100,7 +108,9 @@ async def run_save_config(config_changed, updates, key="save_config"):
             st.error(f"Error: {result['error']}")
         else:
             st.success("✅ Configuration saved!")
-            st.session_state.runtime_config = result.get("config", await get_config_api())
+            st.session_state.runtime_config = result.get(
+                "config", await get_config_api()
+            )
             for widget_key in _CONFIG_WIDGET_KEYS:
                 st.session_state.pop(widget_key, None)
             st.rerun()
@@ -215,9 +225,15 @@ async def run_prompt_config():
 
         col1, col2 = st.columns(2)
         with col1:
-            await run_save_config(prompt_changed, {"system_prompt": new_prompt}, key="save_prompt_config")
+            await run_save_config(
+                prompt_changed,
+                {"system_prompt": new_prompt},
+                key="save_prompt_config",
+            )
         with col2:
-            run_reset_config(key="reset_prompt_config", keys_prefix="prompt_config")
+            run_reset_config(
+                key="reset_prompt_config", keys_prefix="prompt_config"
+            )
 
         if prompt_changed:
             st.info("💡 You have unsaved changes")

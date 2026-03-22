@@ -5,10 +5,18 @@ import warnings
 from google import genai
 from pydantic_settings import BaseSettings
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", force=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    force=True,
+)
 
-warnings.filterwarnings("ignore", category=FutureWarning, module="google.cloud.aiplatform")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="unstructured")
+warnings.filterwarnings(
+    "ignore", category=FutureWarning, module="google.cloud.aiplatform"
+)
+warnings.filterwarnings(
+    "ignore", category=DeprecationWarning, module="unstructured"
+)
 
 
 class GeminiConnectionError(ConnectionError):
@@ -68,7 +76,9 @@ TOKENIZER_MODEL = "mistralai/Mistral-7B-v0.1"
 THREADS = 4
 SUMMARIZE = False
 SQLITE_MEMORY_DATABASE = settings.SQLITE_MEMORY_DATABASE
-RUNTIME_CONFIG_PATH = os.path.join(os.path.dirname(settings.SQLITE_MEMORY_DATABASE), "runtime_config.json")
+RUNTIME_CONFIG_PATH = os.path.join(
+    os.path.dirname(settings.SQLITE_MEMORY_DATABASE), "runtime_config.json"
+)
 VECTORSTORE_PATH = settings.VECTORSTORE_PATH
 CACHE_FOLDER = settings.CACHE_FOLDER_PATH
 PDF_FOLDER = settings.PDF_FOLDER

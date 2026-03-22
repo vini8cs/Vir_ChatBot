@@ -25,7 +25,16 @@ router = APIRouter(tags=["vectorstore"])
 TEMP_UPLOAD_DIR = "/tmp/temp_uploads"
 Path(TEMP_UPLOAD_DIR).mkdir(exist_ok=True)
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png", ".txt", ".tsv"}
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".txt",
+    ".tsv",
+}
 
 
 @router.post("/vectorstore/reload")
@@ -55,7 +64,11 @@ async def upload_pdf(
     Supported formats: PDF, DOCX, DOC, JPEG, PNG, TXT, TSV.
     """
     unsupported = [
-        f.filename for f in files if not any(f.filename.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS)
+        f.filename
+        for f in files
+        if not any(
+            f.filename.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS
+        )
     ]
     if unsupported:
         raise HTTPException(
@@ -79,7 +92,9 @@ async def upload_pdf(
 
     except Exception as e:
         await asyncio.to_thread(shutil.rmtree, upload_dir)
-        raise HTTPException(status_code=500, detail="Internal Server Error") from e
+        raise HTTPException(
+            status_code=500, detail="Internal Server Error"
+        ) from e
 
     task = create_vectorstore_uploaded_pdfs.delay(
         files_to_upload,
@@ -100,7 +115,9 @@ async def delete_pdfs(request: DeleteFileRequest):
     Endpoint to trigger the deletion of specific PDFs from the VectorStore.
     """
     if not request.filenames:
-        raise HTTPException(status_code=400, detail="The list of files is empty.")
+        raise HTTPException(
+            status_code=400, detail="The list of files is empty."
+        )
 
     logging.info(f"Requesting deletion for: {request.filenames}")
 
@@ -136,7 +153,9 @@ async def list_pdfs():
         if "metadata" not in df.columns:
             return {"pdfs": []}
 
-        filenames = df["metadata"].apply(_get_filenames_from_metadata).dropna().unique()
+        filenames = (
+            df["metadata"].apply(_get_filenames_from_metadata).dropna().unique()
+        )
         return {"pdfs": sorted(filenames)}
 
     except Exception as e:

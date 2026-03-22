@@ -46,12 +46,19 @@ async def start_session_data(user_id: str):
         st.session_state.runtime_config = config_result
 
     if "selected_thread" not in st.session_state:
-        st.session_state.selected_thread = st.session_state.threads_id[-1] if st.session_state.threads_id else None
-
-    if st.session_state.selected_thread and st.session_state.selected_thread not in st.session_state.messages:
-        st.session_state.messages[st.session_state.selected_thread] = await get_thread_messages_api(
-            st.session_state.selected_thread
+        st.session_state.selected_thread = (
+            st.session_state.threads_id[-1]
+            if st.session_state.threads_id
+            else None
         )
+
+    if (
+        st.session_state.selected_thread
+        and st.session_state.selected_thread not in st.session_state.messages
+    ):
+        st.session_state.messages[
+            st.session_state.selected_thread
+        ] = await get_thread_messages_api(st.session_state.selected_thread)
 
     if "runtime_config" not in st.session_state:
         st.session_state.runtime_config = await get_config_api()
@@ -87,7 +94,9 @@ async def select_thread(thread_id: str):
     """Select a thread and load its messages from the database."""
     st.session_state.selected_thread = thread_id
     if thread_id not in st.session_state.messages:
-        st.session_state.messages[thread_id] = await get_thread_messages_api(thread_id)
+        st.session_state.messages[thread_id] = await get_thread_messages_api(
+            thread_id
+        )
 
 
 def get_current_messages() -> list:
@@ -104,7 +113,9 @@ def add_message(role: str, content: str):
     if thread_id:
         if thread_id not in st.session_state.messages:
             st.session_state.messages[thread_id] = []
-        st.session_state.messages[thread_id].append({"role": role, "content": content})
+        st.session_state.messages[thread_id].append(
+            {"role": role, "content": content}
+        )
 
 
 def add_active_task(task_id: str, task_name: str):

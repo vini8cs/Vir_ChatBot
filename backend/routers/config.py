@@ -23,7 +23,9 @@ async def update_config(request: ConfigUpdateRequest):
     """
     update_data = request.model_dump(exclude_none=True)
     if not update_data:
-        raise HTTPException(status_code=400, detail="No configuration fields provided")
+        raise HTTPException(
+            status_code=400, detail="No configuration fields provided"
+        )
 
     current_config = state.runtime_config.model_dump()
     current_config.update(update_data)
@@ -67,7 +69,8 @@ async def reset_config_and_reload():
             "status": "success",
             "message": "Configuration reset and VectorStore reloaded",
             "config": state.runtime_config.model_dump(),
-            "vectorstore_loaded": state.global_resources["retriever"] is not None,
+            "vectorstore_loaded": state.global_resources["retriever"]
+            is not None,
         }
     except Exception as e:
         logging.error(f"Error reloading VectorStore: {e}")

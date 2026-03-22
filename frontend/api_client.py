@@ -10,7 +10,9 @@ import streamlit as st
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 
-async def gather_tasks(names: list[str], tasks: list[Coroutine[Any, Any, Any]]) -> dict:
+async def gather_tasks(
+    names: list[str], tasks: list[Coroutine[Any, Any, Any]]
+) -> dict:
     task_objs = {}
     async with asyncio.TaskGroup() as tg:
         for name, coro in zip(names, tasks, strict=False):
@@ -87,7 +89,11 @@ async def chat_stream_api(message: str, thread_id: str, user_id: str):
             client.stream(
                 "POST",
                 url,
-                json={"message": message, "thread_id": thread_id, "user_id": user_id},
+                json={
+                    "message": message,
+                    "thread_id": thread_id,
+                    "user_id": user_id,
+                },
             ) as response,
         ):
             response.raise_for_status()
@@ -141,7 +147,8 @@ async def upload_pdfs_api(files) -> dict:
             (
                 file.name,
                 file.getvalue(),
-                mimetypes.guess_type(file.name)[0] or "application/octet-stream",
+                mimetypes.guess_type(file.name)[0]
+                or "application/octet-stream",
             ),
         )
         for file in files
@@ -201,7 +208,9 @@ async def update_config_api(config_updates: dict) -> dict:
 
 
 async def reset_config_api(reload_vectorstore: bool = False) -> dict:
-    endpoint = "/config/reset-and-reload" if reload_vectorstore else "/config/reset"
+    endpoint = (
+        "/config/reset-and-reload" if reload_vectorstore else "/config/reset"
+    )
     url = f"{API_BASE_URL}{endpoint}"
     async with httpx.AsyncClient() as client:
         try:

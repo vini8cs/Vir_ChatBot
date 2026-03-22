@@ -13,14 +13,26 @@ def make_retrieve_tool(retriever):
     async def retrieve(query: str):
         """Retrieve relevant information from the knowledge base given a query."""
         result = await retriever.ainvoke(query)
-        docs = [{"id": doc.id, "metadata": doc.metadata, "page_content": doc.page_content} for doc in result]
+        docs = [
+            {
+                "id": doc.id,
+                "metadata": doc.metadata,
+                "page_content": doc.page_content,
+            }
+            for doc in result
+        ]
         return encode(docs)
 
     return retrieve
 
 
 async def query_or_respond(
-    state: MessagesState, config: RunnableConfig, store: BaseStore, llm, retrieve_tool, system_prompt=None
+    state: MessagesState,
+    config: RunnableConfig,
+    store: BaseStore,
+    llm,
+    retrieve_tool,
+    system_prompt=None,
 ):
     """Generate tool call for retrieval or respond."""
     llm_with_tools = llm.bind_tools([retrieve_tool])

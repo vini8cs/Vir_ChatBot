@@ -1,7 +1,11 @@
 import asyncio
 
 import streamlit as st
-from api_client import cancel_task_api, get_task_status_api, reload_vectorstore_api
+from api_client import (
+    cancel_task_api,
+    get_task_status_api,
+    reload_vectorstore_api,
+)
 from session import remove_active_task
 
 
@@ -132,7 +136,9 @@ async def render_task_progress():
         with col1:
             st.caption("💡 Click 'Refresh' to see the latest progress")
         with col2:
-            if st.button("🔄 Refresh", key="refresh_tasks", use_container_width=True):
+            if st.button(
+                "🔄 Refresh", key="refresh_tasks", use_container_width=True
+            ):
                 st.rerun()
 
         # NOTE: Removed st_autorefresh as it interrupts streaming chat responses

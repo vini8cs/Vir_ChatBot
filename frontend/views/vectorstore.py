@@ -9,7 +9,9 @@ from session import add_active_task
 
 
 async def run_reload_vectorstore():
-    if st.button("🔄 Reload VectorStore", use_container_width=True, key="reload_vs"):
+    if st.button(
+        "🔄 Reload VectorStore", use_container_width=True, key="reload_vs"
+    ):
         with st.spinner("Reloading VectorStore..."):
             result = await reload_vectorstore_api()
             status = result.get("status")
@@ -31,7 +33,9 @@ async def run_upload_pdfs_vectorstore():
         key="pdf_uploader",
     )
 
-    if uploaded_files and st.button("📤 Upload and Create VectorStore", use_container_width=True):
+    if uploaded_files and st.button(
+        "📤 Upload and Create VectorStore", use_container_width=True
+    ):
         with st.spinner("Uploading files..."):
             result = await upload_pdfs_api(uploaded_files)
             if "error" in result:
@@ -39,13 +43,17 @@ async def run_upload_pdfs_vectorstore():
             st.success(f"✅ {result.get('message', 'Files uploaded!')}")
             task_id = result.get("task_id")
             if task_id:
-                add_active_task(task_id, f"Upload of {len(uploaded_files)} file(s)")
+                add_active_task(
+                    task_id, f"Upload of {len(uploaded_files)} file(s)"
+                )
                 st.rerun()
             return
 
 
 async def check_selected_pdfs():
-    if st.button("🔄 Refresh List", use_container_width=True, key="refresh_pdfs"):
+    if st.button(
+        "🔄 Refresh List", use_container_width=True, key="refresh_pdfs"
+    ):
         st.session_state.pdf_list = await list_pdfs_api()
         st.rerun()
 
@@ -64,7 +72,11 @@ async def check_selected_pdfs():
 
     search_term = st.text_input("🔍 Search document", key="pdf_search")
 
-    filtered_pdfs = [pdf for pdf in pdf_list if search_term.lower() in pdf.lower()] if search_term else pdf_list
+    filtered_pdfs = (
+        [pdf for pdf in pdf_list if search_term.lower() in pdf.lower()]
+        if search_term
+        else pdf_list
+    )
 
     selected = st.multiselect(
         "Select documents to delete:",
@@ -87,6 +99,8 @@ async def check_selected_pdfs():
                 st.success(f"✅ {result.get('message', 'Documents deleted!')}")
                 task_id = result.get("task_id")
                 if task_id:
-                    add_active_task(task_id, f"Delete {len(selected)} document(s)")
+                    add_active_task(
+                        task_id, f"Delete {len(selected)} document(s)"
+                    )
                 st.session_state.pdf_list = await list_pdfs_api()
                 st.rerun()

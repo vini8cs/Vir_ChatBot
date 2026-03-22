@@ -4,7 +4,10 @@ import os
 from functools import partial
 
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import (
+    ChatGoogleGenerativeAI,
+    GoogleGenerativeAIEmbeddings,
+)
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -26,14 +29,21 @@ class Vir_ChatBot:
         self.retriever = retriever
         self.checkpointer = checkpointer
         self.system_prompt = system_prompt
-        self.llm = ChatGoogleGenerativeAI(model=llm_model, temperature=temperature, max_retries=max_retries)
+        self.llm = ChatGoogleGenerativeAI(
+            model=llm_model, temperature=temperature, max_retries=max_retries
+        )
         self.graph = None
 
     async def build_graph(self):
         builder = StateGraph(MessagesState)
 
         retrieve_tool = make_retrieve_tool(self.retriever)
-        node = partial(query_or_respond, llm=self.llm, retrieve_tool=retrieve_tool, system_prompt=self.system_prompt)
+        node = partial(
+            query_or_respond,
+            llm=self.llm,
+            retrieve_tool=retrieve_tool,
+            system_prompt=self.system_prompt,
+        )
 
         tools = ToolNode([retrieve_tool])
 
@@ -56,7 +66,9 @@ class Vir_ChatBot:
 async def load_global_vectorstore(retriever_limit: int | None = None):
     vectorstore_index = os.path.join(_.VECTORSTORE_PATH, "index.faiss")
     if not os.path.exists(vectorstore_index):
-        logging.info(f"VectorStore not found at {_.VECTORSTORE_PATH}. It will be created when PDFs are added.")
+        logging.info(
+            f"VectorStore not found at {_.VECTORSTORE_PATH}. It will be created when PDFs are added."
+        )
         return None
 
     embeddings = GoogleGenerativeAIEmbeddings(model=_.EMBEDDING_MODEL)
@@ -68,7 +80,9 @@ async def load_global_vectorstore(retriever_limit: int | None = None):
         allow_dangerous_deserialization=True,
     )
     k = retriever_limit if retriever_limit is not None else _.RETRIEVER_LIMIT
-    return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": k})
+    return vectorstore.as_retriever(
+        search_type="similarity", search_kwargs={"k": k}
+    )
 
 
 async def create_graph(
@@ -88,7 +102,9 @@ async def create_graph(
     # Enable WAL mode for better concurrent access
     if hasattr(checkpointer, "conn") and checkpointer.conn:
         await checkpointer.conn.execute("PRAGMA journal_mode=WAL;")
-        await checkpointer.conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout
+        await checkpointer.conn.execute(
+            "PRAGMA busy_timeout=30000;"
+        )  # 30 second timeout
 
     bot = Vir_ChatBot(
         retriever=global_retriever,

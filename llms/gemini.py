@@ -31,7 +31,9 @@ class Gemini:
         self.summarize_chain_text = None
         self.summarize_chain_image = None
         self.gemini_embedding_model = gemini_embedding_model
-        self.embeddings = GoogleGenerativeAIEmbeddings(model=self.gemini_embedding_model)
+        self.embeddings = GoogleGenerativeAIEmbeddings(
+            model=self.gemini_embedding_model
+        )
         if prompt_text:
             self.prompt = PromptTemplate.from_template(prompt_text)
             self._create_sumarized_chain_text()

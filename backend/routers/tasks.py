@@ -30,12 +30,20 @@ async def get_task_status(task_id: str):
 
         def _handle_failure():
             return {
-                "error": (str(task_result.result) if task_result.result else "Unknown error"),
+                "error": (
+                    str(task_result.result)
+                    if task_result.result
+                    else "Unknown error"
+                ),
                 "percent": 0,
             }
 
         def _handle_pending():
-            return {"percent": 0, "step": "Waiting", "details": "Task queued..."}
+            return {
+                "percent": 0,
+                "step": "Waiting",
+                "details": "Task queued...",
+            }
 
         task_result = celery_app.AsyncResult(task_id)
 
@@ -43,7 +51,9 @@ async def get_task_status(task_id: str):
             "task_id": task_id,
             "status": task_result.status,
             "ready": task_result.ready(),
-            "successful": task_result.successful() if task_result.ready() else None,
+            "successful": task_result.successful()
+            if task_result.ready()
+            else None,
         }
 
         _handlers = {
@@ -61,7 +71,9 @@ async def get_task_status(task_id: str):
 
     except Exception as e:
         logging.error(f"Error getting task status: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error") from e
+        raise HTTPException(
+            status_code=500, detail="Internal Server Error"
+        ) from e
 
 
 @router.delete("/{task_id}")
@@ -73,4 +85,6 @@ async def cancel_task(task_id: str):
         return {"status": "cancelled", "task_id": task_id}
     except Exception as e:
         logging.error(f"Error cancelling task {task_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error cancelling task") from e
+        raise HTTPException(
+            status_code=500, detail="Error cancelling task"
+        ) from e

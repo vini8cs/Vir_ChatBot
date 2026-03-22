@@ -5,7 +5,11 @@ from views.chat import run_chat, run_chat_no_thread
 from views.config import run_llm_config, run_prompt_config
 from views.sidebar import first_setup
 from views.tasks import render_task_progress
-from views.vectorstore import check_selected_pdfs, run_reload_vectorstore, run_upload_pdfs_vectorstore
+from views.vectorstore import (
+    check_selected_pdfs,
+    run_reload_vectorstore,
+    run_upload_pdfs_vectorstore,
+)
 
 st.set_page_config(page_title="Vir ChatBot", page_icon="🧬", layout="wide")
 

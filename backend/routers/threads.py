@@ -46,7 +46,9 @@ async def get_user_threads(user_id: str):
         if "no such table" in str(e).lower():
             return {"threads": []}
         logging.error(f"Database error: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error") from e
+        raise HTTPException(
+            status_code=500, detail="Internal Server Error"
+        ) from e
 
 
 @router.delete("/{user_id}/{thread_id}")
@@ -72,8 +74,12 @@ async def delete_thread(user_id: str, thread_id: str):
                     detail="Thread not found or access denied",
                 )
 
-            await conn.execute("DELETE FROM checkpoints WHERE thread_id = ?", (thread_id,))
-            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (thread_id,))
+            await conn.execute(
+                "DELETE FROM checkpoints WHERE thread_id = ?", (thread_id,)
+            )
+            await conn.execute(
+                "DELETE FROM writes WHERE thread_id = ?", (thread_id,)
+            )
             await conn.commit()
             return {"message": f"Thread {thread_id} deleted successfully"}
 
@@ -81,9 +87,13 @@ async def delete_thread(user_id: str, thread_id: str):
         raise
     except Exception as e:
         if "no such table" in str(e).lower():
-            raise HTTPException(status_code=404, detail="Thread not found or access denied") from e
+            raise HTTPException(
+                status_code=404, detail="Thread not found or access denied"
+            ) from e
         logging.error(f"CRITICAL DB ERROR: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error") from e
+        raise HTTPException(
+            status_code=500, detail="Internal Server Error"
+        ) from e
 
 
 @router.get("/{thread_id}/messages")
