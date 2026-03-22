@@ -7,7 +7,7 @@ repos:
         args: [--fix, --select, "E,W,F,I,B,C4,SIM", --line-length, "120"]
       - id: ruff-format
         types_or: [python, pyi]
-        args: [--line-length, "120"]
+        args: [--line-length, "80"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

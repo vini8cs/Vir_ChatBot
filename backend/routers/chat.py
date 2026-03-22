@@ -25,7 +25,10 @@ async def _create_graph_retriever(retriever, config, max_retries=3):
                 system_prompt=config.system_prompt,
             )
         except Exception as e:
-            if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+            if (
+                "database is locked" in str(e).lower()
+                and attempt < max_retries - 1
+            ):
                 await asyncio.sleep(3)
                 continue
             return None
@@ -50,7 +53,9 @@ async def _chat_generator(user_input: str, thread_id: str, user_id: str):
 
     graph, checkpointer_cm = result
 
-    graph_config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
+    graph_config = {
+        "configurable": {"thread_id": thread_id, "user_id": user_id}
+    }
 
     try:
         async for event in graph.astream(
@@ -72,9 +77,14 @@ async def _chat_generator(user_input: str, thread_id: str, user_id: str):
             content = last_msg.content
             if isinstance(content, list):
                 content = " ".join(
-                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    part.get("text", "")
+                    if isinstance(part, dict)
+                    else str(part)
                     for part in content
-                    if not (isinstance(part, dict) and part.get("type") == "thinking")
+                    if not (
+                        isinstance(part, dict)
+                        and part.get("type") == "thinking"
+                    )
                 ).strip()
 
             if content:
