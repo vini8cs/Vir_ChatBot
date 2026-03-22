@@ -20,7 +20,9 @@ def _load_persisted_config() -> RuntimeConfig:
             data = json.load(f)
         return RuntimeConfig(**data)
     except Exception as e:
-        logging.warning(f"Could not load persisted config, using defaults: {e}")
+        logging.warning(
+            f"Could not load persisted config, using defaults: {e}"
+        )
         return RuntimeConfig()
 
 

@@ -90,13 +90,17 @@ async def check_selected_pdfs():
 
     st.warning(f"⚠️ {len(selected)} document(s) selected for deletion")
 
-    if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
+    if st.button(
+        "🗑️ Delete Selected", type="primary", use_container_width=True
+    ):
         with st.spinner("Deleting documents..."):
             result = await delete_pdfs_api(selected)
             if "error" in result:
                 st.error(f"Error: {result['error']}")
             else:
-                st.success(f"✅ {result.get('message', 'Documents deleted!')}")
+                st.success(
+                    f"✅ {result.get('message', 'Documents deleted!')}"
+                )
                 task_id = result.get("task_id")
                 if task_id:
                     add_active_task(

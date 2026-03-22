@@ -62,7 +62,9 @@ class NoCacheFoundError(Exception):
 class NoVectorStoreFoundError(Exception):
     """Custom exception for no vectorstore found."""
 
-    default_message = "No vectorstore found. Try creating the vectorstor first!"
+    default_message = (
+        "No vectorstore found. Try creating the vectorstor first!"
+    )
 
     def __init__(self, message: str | None = None):
         super().__init__(message or self.default_message)
@@ -124,7 +126,11 @@ class VectorStoreCreator(Gemini):
 
     @staticmethod
     def clean_text(text: str) -> str:
-        if isinstance(text, str) and len(text.split()) > 3 and text is not None:
+        if (
+            isinstance(text, str)
+            and len(text.split()) > 3
+            and text is not None
+        ):
             cleaned_text = re.sub(r"\u2022", "", text)
             return re.sub(r"\s+", " ", cleaned_text).strip()
         return None
@@ -176,7 +182,9 @@ class VectorStoreCreator(Gemini):
     def _load_cache(self):
         logging.info(f"Loading {self.cache}...")
         self.cache_df = pd.read_csv(self.cache)
-        self.cache_df["metadata"] = self.cache_df["metadata"].apply(json.loads)
+        self.cache_df["metadata"] = self.cache_df["metadata"].apply(
+            json.loads
+        )
 
         self.pdf_list = set(
             self.cache_df["metadata"].apply(lambda x: x["filename"])
@@ -217,7 +225,8 @@ class VectorStoreCreator(Gemini):
         ].reset_index(drop=True)
 
         logging.info(
-            f"Found {len(self.uudis_to_remove)} UUIDs to delete from vectorstore"
+            f"Found {len(self.uudis_to_remove)} UUIDs to "
+            "delete from vectorstore"
         )
 
     def delete_uuids_from_vectorstore(self):
@@ -340,7 +349,9 @@ class VectorStoreCreator(Gemini):
                 image_uri = image_uri.split("base64,")[-1]
 
             page_numbers = (
-                sorted({prov.page_no for prov in getattr(picture, "prov", [])})
+                sorted(
+                    {prov.page_no for prov in getattr(picture, "prov", [])}
+                )
                 or None
             )
 
@@ -384,7 +395,9 @@ class VectorStoreCreator(Gemini):
             )
         else:
             for picture in result.document.pictures:
-                image_chunks.append(extract_image_from_chunk(picture, pdf_path))
+                image_chunks.append(
+                    extract_image_from_chunk(picture, pdf_path)
+                )
 
         text_chunks = extract_text_from_chunk(chunks, pdf_path)
         return text_chunks, image_chunks
@@ -399,7 +412,9 @@ class VectorStoreCreator(Gemini):
                 drop=True
             )
 
-        logging.info(f"Starting summarization process for {content} content...")
+        logging.info(
+            f"Starting summarization process for {content} content..."
+        )
 
         if df.empty:
             logging.info("DataFrame is empty, skipping summarization.")
@@ -470,9 +485,9 @@ class VectorStoreCreator(Gemini):
         logging.info(f"Text chunks: {len(text_summarized)}")
         logging.info(f"Image chunks: {len(image_summarized)}")
 
-        merged_df = pd.concat([text_summarized, image_summarized]).reset_index(
-            drop=True
-        )
+        merged_df = pd.concat(
+            [text_summarized, image_summarized]
+        ).reset_index(drop=True)
         self.filtered_df = merged_df.dropna(subset=["summary"])
 
     def _check_vectorstore_exists(self):

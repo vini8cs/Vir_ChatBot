@@ -154,7 +154,10 @@ async def list_pdfs():
             return {"pdfs": []}
 
         filenames = (
-            df["metadata"].apply(_get_filenames_from_metadata).dropna().unique()
+            df["metadata"]
+            .apply(_get_filenames_from_metadata)
+            .dropna()
+            .unique()
         )
         return {"pdfs": sorted(filenames)}
 

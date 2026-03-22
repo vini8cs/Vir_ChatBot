@@ -11,7 +11,8 @@ from templates.prompts import TOOL_CALLER_PROMPT
 def make_retrieve_tool(retriever):
     @tool
     async def retrieve(query: str):
-        """Retrieve relevant information from the knowledge base given a query."""
+        """Retrieve relevant information
+        from the knowledge base given a query."""
         result = await retriever.ainvoke(query)
         docs = [
             {
@@ -36,7 +37,9 @@ async def query_or_respond(
 ):
     """Generate tool call for retrieval or respond."""
     llm_with_tools = llm.bind_tools([retrieve_tool])
-    prompt = system_prompt if system_prompt is not None else TOOL_CALLER_PROMPT
+    prompt = (
+        system_prompt if system_prompt is not None else TOOL_CALLER_PROMPT
+    )
     sys_message = [SystemMessage(content=prompt)]
     response = await llm_with_tools.ainvoke(sys_message + state["messages"])
     return {"messages": [response]}

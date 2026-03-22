@@ -23,7 +23,9 @@ async def _turn_wal_mode_on():
         async with aiosqlite.connect(_.SQLITE_MEMORY_DATABASE) as conn:
             await conn.execute("PRAGMA journal_mode=WAL;")
             await conn.execute("PRAGMA busy_timeout=30000;")
-        logging.info(f"SQLite WAL mode enabled for {_.SQLITE_MEMORY_DATABASE}")
+        logging.info(
+            f"SQLite WAL mode enabled for {_.SQLITE_MEMORY_DATABASE}"
+        )
     except Exception as e:
         logging.warning(f"Could not enable WAL mode: {e}")
 
@@ -43,7 +45,9 @@ async def lifespan(app: FastAPI):
         else:
             logging.info("VectorStore not found. Create one first.")
     except Exception as e:
-        logging.error(f"Error loading VectorStore: {e}. Try creating it first.")
+        logging.error(
+            f"Error loading VectorStore: {e}. Try creating it first."
+        )
         state.global_resources["retriever"] = None
 
     yield

@@ -46,7 +46,8 @@ async def first_setup():
 
     if (
         "initialized_user" not in st.session_state
-        or st.session_state.get("initialized_user") != st.session_state.user_id
+        or st.session_state.get("initialized_user")
+        != st.session_state.user_id
     ):
         await start_session_data(st.session_state.user_id)
         st.session_state.initialized_user = st.session_state.user_id

@@ -64,7 +64,9 @@ try:
     logging.info("Initializing Gemini client...")
     CLIENT_GEMINI = genai.Client()
 except Exception as e:
-    raise GeminiConnectionError(f"Error initializing Gemini client: {e}") from e
+    raise GeminiConnectionError(
+        f"Error initializing Gemini client: {e}"
+    ) from e
 
 GEMINI_MODEL = "gemini-2.5-flash"
 EMBEDDING_MODEL = "gemini-embedding-001"

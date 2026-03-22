@@ -21,7 +21,9 @@ def _create_progress_task(status):
     current = status.get("current", 0)
     total = status.get("total", 0)
 
-    st.progress(percent / 100, text=f"🔄 {step}: {details} ({current}/{total})")
+    st.progress(
+        percent / 100, text=f"🔄 {step}: {details} ({current}/{total})"
+    )
     return True
 
 
@@ -140,6 +142,3 @@ async def render_task_progress():
                 "🔄 Refresh", key="refresh_tasks", use_container_width=True
             ):
                 st.rerun()
-
-        # NOTE: Removed st_autorefresh as it interrupts streaming chat responses
-        # Users must manually click "Refresh" to refresh task progress

@@ -61,7 +61,9 @@ def create_vectorstore_uploaded_pdfs(
             summarize=summarize,
             gemini_model=gemini_model,
         )
-        vector_store_creator.pdf_paths = vector_store_creator.pdfs_to_add.copy()
+        vector_store_creator.pdf_paths = (
+            vector_store_creator.pdfs_to_add.copy()
+        )
 
         update_task_progress(
             self,
@@ -75,7 +77,11 @@ def create_vectorstore_uploaded_pdfs(
             vector_store_creator._diff_vs_cache()
 
         update_task_progress(
-            self, 3, total_steps, "Chunking", "Chunking PDF(s) with Docling..."
+            self,
+            3,
+            total_steps,
+            "Chunking",
+            "Chunking PDF(s) with Docling...",
         )
         vector_store_creator._start_chunking_process()
 
@@ -135,7 +141,11 @@ def create_vectorstore_from_folder(
     logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
     try:
         update_task_progress(
-            self, 1, total_steps, "Starting", "Searching for PDFs in folder..."
+            self,
+            1,
+            total_steps,
+            "Starting",
+            "Searching for PDFs in folder...",
         )
 
         vector_store_creator = VectorStoreCreator(
@@ -172,7 +182,8 @@ def create_vectorstore_from_folder(
 
         return {
             "status": "Success",
-            "message": f"VectorStore created from scratch with {pdf_count} PDF(s).",
+            "message": "VectorStore created from scratch"
+            f" with {pdf_count} PDF(s).",
             "current": total_steps,
             "total": total_steps,
             "percent": 100,
@@ -225,7 +236,8 @@ def delete_pdfs_from_vectorstore(self, filenames: List[str]):
 
         return {
             "status": "Success",
-            "message": f"{len(filenames)} file(s) deleted successfully: {', '.join(filenames)}",
+            "message": f"{len(filenames)} file(s) deleted"
+            f" successfully: {', '.join(filenames)}",
             "current": total_steps,
             "total": total_steps,
             "percent": 100,

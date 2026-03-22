@@ -143,7 +143,9 @@ def _make_reset_config_callback(keys_prefix: str = "config"):
         async def _run():
             result = await reset_config_api(reload_vectorstore=False)
             if "error" in result:
-                st.session_state[f"{keys_prefix}_reset_error"] = result["error"]
+                st.session_state[f"{keys_prefix}_reset_error"] = result[
+                    "error"
+                ]
                 return
             new_config = await get_config_api()
             st.session_state.runtime_config = new_config
