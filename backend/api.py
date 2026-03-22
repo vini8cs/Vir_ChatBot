@@ -40,6 +40,7 @@ class RuntimeConfig(BaseModel):
     threads: int = _.THREADS
     summarize: bool = _.SUMMARIZE
     retriever_limit: int = _.RETRIEVER_LIMIT
+    system_prompt: str = _.SYSTEM_PROMPT
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -55,6 +56,7 @@ class ConfigUpdateRequest(BaseModel):
     threads: int | None = None
     summarize: bool | None = None
     retriever_limit: int | None = None
+    system_prompt: str | None = None
 
 
 class HealthCheckFilter(logging.Filter):
@@ -556,6 +558,7 @@ async def create_graph_retriever(retriever, config: RuntimeConfig, max_retries=3
                 llm_model=config.gemini_model,
                 temperature=config.temperature,
                 max_retries=config.max_retries,
+                system_prompt=config.system_prompt,
             )
         except Exception as e:
             if "database is locked" in str(e).lower() and attempt < max_retries - 1:

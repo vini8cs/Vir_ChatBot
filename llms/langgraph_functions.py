@@ -19,9 +19,12 @@ def make_retrieve_tool(retriever):
     return retrieve
 
 
-async def query_or_respond(state: MessagesState, config: RunnableConfig, store: BaseStore, llm, retrieve_tool):
+async def query_or_respond(
+    state: MessagesState, config: RunnableConfig, store: BaseStore, llm, retrieve_tool, system_prompt=None
+):
     """Generate tool call for retrieval or respond."""
     llm_with_tools = llm.bind_tools([retrieve_tool])
-    sys_message = [SystemMessage(content=TOOL_CALLER_PROMPT)]
+    prompt = system_prompt if system_prompt is not None else TOOL_CALLER_PROMPT
+    sys_message = [SystemMessage(content=prompt)]
     response = await llm_with_tools.ainvoke(sys_message + state["messages"])
     return {"messages": [response]}

@@ -896,6 +896,35 @@ async def run_llm_config():
                 st.info("💡 You have unsaved changes")
 
 
+async def run_prompt_config():
+    with st.expander("📝 System Prompt", expanded=False):
+        config = st.session_state.runtime_config
+
+        if "error" in config:
+            st.error(f"Error loading config: {config['error']}")
+            return
+
+        current_prompt = config.get("system_prompt", "")
+        new_prompt = st.text_area(
+            "System Prompt",
+            value=current_prompt,
+            height=300,
+            key="prompt_editor",
+            label_visibility="collapsed",
+        )
+
+        prompt_changed = new_prompt != current_prompt
+
+        col1, col2 = st.columns(2)
+        with col1:
+            await run_save_config(prompt_changed, {"system_prompt": new_prompt}, key="save_prompt_config")
+        with col2:
+            run_reset_config(key="reset_prompt_config", keys_prefix="prompt_config")
+
+        if prompt_changed:
+            st.info("💡 You have unsaved changes")
+
+
 async def run_chat():
     st.header(f"💬 Conversation: {st.session_state.selected_thread[:8]}...")
     chat_container = st.container()
@@ -977,6 +1006,7 @@ async def main():
         st.subheader("⚙️ Configuration")
 
         await run_llm_config()
+        await run_prompt_config()
 
         if st.session_state.active_tasks:
             st.divider()

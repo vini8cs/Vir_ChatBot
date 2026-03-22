@@ -21,9 +21,11 @@ class Vir_ChatBot:
         temperature,
         max_retries,
         checkpointer,
+        system_prompt=None,
     ):
         self.retriever = retriever
         self.checkpointer = checkpointer
+        self.system_prompt = system_prompt
         self.llm = ChatGoogleGenerativeAI(model=llm_model, temperature=temperature, max_retries=max_retries)
         self.graph = None
 
@@ -31,7 +33,7 @@ class Vir_ChatBot:
         builder = StateGraph(MessagesState)
 
         retrieve_tool = make_retrieve_tool(self.retriever)
-        node = partial(query_or_respond, llm=self.llm, retrieve_tool=retrieve_tool)
+        node = partial(query_or_respond, llm=self.llm, retrieve_tool=retrieve_tool, system_prompt=self.system_prompt)
 
         tools = ToolNode([retrieve_tool])
 
@@ -74,6 +76,7 @@ async def create_graph(
     llm_model: str | None = None,
     temperature: float | None = None,
     max_retries: int | None = None,
+    system_prompt: str | None = None,
 ):
     # Use WAL mode connection string for better concurrency
     db_path = _.SQLITE_MEMORY_DATABASE
@@ -93,6 +96,7 @@ async def create_graph(
         temperature=temperature if temperature is not None else _.TEMPERATURE,
         max_retries=max_retries if max_retries is not None else _.MAX_RETRIES,
         checkpointer=checkpointer,
+        system_prompt=system_prompt,
     )
 
     graph = await bot.build_graph()
