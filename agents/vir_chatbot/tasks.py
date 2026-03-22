@@ -43,7 +43,7 @@ def create_vectorstore_uploaded_pdfs(
     gemini_model: str = "gemini-2.5-flash",
 ):
     total_steps = 5
-    logging.info("Building/adding new PDFs to vectorstore...")
+    logging.info("Building/adding new documents to vectorstore...")
     logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
     try:
         update_task_progress(
