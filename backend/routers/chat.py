@@ -69,8 +69,16 @@ async def _chat_generator(user_input: str, thread_id: str, user_id: str):
             if last_msg.type != "ai":
                 continue
 
-            if last_msg.content:
-                payload = {"content": last_msg.content, "type": "ai_response"}
+            content = last_msg.content
+            if isinstance(content, list):
+                content = " ".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in content
+                    if not (isinstance(part, dict) and part.get("type") == "thinking")
+                ).strip()
+
+            if content:
+                payload = {"content": content, "type": "ai_response"}
                 yield f"data: {json.dumps(payload)}\n\n"
 
         yield "data: [DONE]\n\n"

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 
-os.environ["GOOGLE_API_KEY"] = settings.GEMINI_API_KEY
+os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.GCP_CREDENTIALS
 os.environ["GOOGLE_CLOUD_PROJECT"] = settings.GCP_PROJECT
 os.environ["GOOGLE_CLOUD_REGION"] = settings.GCP_REGION

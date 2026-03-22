@@ -2,10 +2,10 @@ import json
 import logging
 import re
 
-from langchain.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage
+from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_google_vertexai import ChatVertexAI, VertexAI
+from langchain_google_vertexai import ChatVertexAI
 
 
 class Gemini:
@@ -48,8 +48,8 @@ class Gemini:
             return None
 
     def _create_sumarized_chain_text(self):
-        self.summarize_chain_text = self.prompt | VertexAI(
-            model_name=self.gemini_model,
+        self.summarize_chain_text = self.prompt | ChatVertexAI(
+            model=self.gemini_model,
             temperature=self.temperature,
             max_output_tokens=self.max_output_tokens,
             response_schema=self.response_schema,
@@ -78,7 +78,7 @@ class Gemini:
             return None
         logging.info(f"Generating summary for text {content[0:10]}...")
         response = self.summarize_chain_text.invoke({"element": content})
-        json_response = self.test_json_validity(response)
+        json_response = self.test_json_validity(response.content)
         if json_response is None:
             return json.dumps({"summary": content, "isReference": False})
         return json_response

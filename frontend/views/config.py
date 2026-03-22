@@ -4,8 +4,8 @@ import streamlit as st
 from api_client import get_config_api, reset_config_api, update_config_api
 
 GEMINI_MODELS = [
-    # "gemini-3-pro-preview",
-    # "gemini-3-flash-preview",
+    "gemini-3-pro-preview",
+    "gemini-3-flash-preview",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.5-pro",
