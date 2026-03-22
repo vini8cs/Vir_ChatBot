@@ -229,45 +229,30 @@ async def reload_vectorstore():
         return {"status": "error", "message": "Error reloading VectorStore"}
 
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png", ".txt", ".tsv"}
-
-
 @app.post("/create-vectorstore-based-on-selected-pdfs/")
 async def upload_pdf(
-    files: list[UploadFile] = File(...),  # noqa: B008
+    files: list[UploadFile] = File(..., media_type="application/pdf"),  # noqa: B008
 ):
-    """Endpoint to create or update the vectorstore based on selected file(s).
-    Supported formats: PDF, DOCX, DOC, JPEG, PNG, TXT, TSV.
-    """
-    unsupported = [
-        f.filename for f in files if not any(f.filename.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS)
-    ]
-    if unsupported:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type(s): {', '.join(unsupported)}. "
-            f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
-        )
-
+    """Endpoint to create or update the vectorstore based on selected PDF(s)"""
     request_id = str(uuid.uuid4())
     upload_dir = os.path.join(TEMP_UPLOAD_DIR, request_id)
     Path(upload_dir).mkdir(exist_ok=True)
 
-    files_to_upload = []
+    pdf_files_to_upload = []
     try:
         for file in files:
             file_path = os.path.join(upload_dir, file.filename)
             async with aiofiles.open(file_path, "wb") as out_file:
                 content = await file.read()
                 await out_file.write(content)
-            files_to_upload.append(file_path)
+            pdf_files_to_upload.append(file_path)
 
     except Exception as e:
         await asyncio.to_thread(shutil.rmtree, upload_dir)
         raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
     task = create_vectorstore_uploaded_pdfs.delay(
-        files_to_upload,
+        pdf_files_to_upload,
         summarize=runtime_config.summarize,
         gemini_model=runtime_config.gemini_model,
     )
@@ -400,18 +385,6 @@ async def get_task_status(task_id: str):
     except Exception as e:
         logging.error(f"Error getting task status: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error") from e
-
-
-@app.delete("/tasks/{task_id}")
-async def cancel_task(task_id: str):
-    """Cancel a running or pending Celery task."""
-    try:
-        celery_app.control.revoke(task_id, terminate=True)
-        logging.info(f"Task {task_id} revoked.")
-        return {"status": "cancelled", "task_id": task_id}
-    except Exception as e:
-        logging.error(f"Error cancelling task {task_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error cancelling task") from e
 
 
 @app.post("/threads/create", response_model=ThreadResponse)
