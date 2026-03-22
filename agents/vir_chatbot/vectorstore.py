@@ -1,3 +1,5 @@
+import base64
+import io
 import json
 import logging
 import os
@@ -9,8 +11,9 @@ from docling.chunking import HybridChunker
 from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
 from langchain_community.vectorstores import FAISS
+from PIL import Image as PILImage
 
 import config as _
 from llms.gemini import Gemini
@@ -18,11 +21,14 @@ from llms.tokenizer import TokenizerWrapper
 from templates.prompts import PROMPT_IMAGE, PROMPT_TEXT
 from templates.schemas import RESPONSE_SCHEMA
 
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png", ".txt", ".tsv"}
+DOCLING_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png"}
+
 
 class NoNewPDFError(Exception):
-    """Custom exception for no new PDF found."""
+    """Custom exception for no new document found."""
 
-    default_message = "No new PDF was found..."
+    default_message = "No new document was found..."
 
     def __init__(self, message: str | None = None):
         super().__init__(message or self.default_message)
@@ -31,7 +37,7 @@ class NoNewPDFError(Exception):
 class NoCacheFoundError(Exception):
     """Custom exception for no cache found."""
 
-    default_message = "No matching PDFs found in cache to delete."
+    default_message = "No matching documents found in cache to delete."
 
     def __init__(self, message: str | None = None):
         super().__init__(message or self.default_message)
@@ -120,7 +126,10 @@ class VectorStoreCreator(Gemini):
         pipeline_options.accelerator_options = accelerator_options
         pipeline_options.enable_remote_services = True
         self.converter = DocumentConverter(
-            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
+                InputFormat.IMAGE: ImageFormatOption(),
+            }
         )
 
     def _save_cache(self):
@@ -183,14 +192,54 @@ class VectorStoreCreator(Gemini):
         self.vectorstore.save_local(self.vectorstore_path)
 
     def _find_pdf(self):
-        logging.info("Searching for PDF files...")
+        logging.info("Searching for supported document files...")
         self.pdf_paths = []
         for root, _loop, files in os.walk(self.pdf_folder):
             for f in files:
-                if not f.lower().endswith(".pdf"):
+                if not any(f.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS):
                     continue
-                full_path = os.path.join(root, f)
-                self.pdf_paths.append(full_path)
+                self.pdf_paths.append(os.path.join(root, f))
+
+    def _chunk_txt(self, file_path):
+        filename = os.path.basename(file_path)
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        words = text.split()
+        chunks = []
+        chunk_words = []
+        for word in words:
+            chunk_words.append(word)
+            if len(chunk_words) >= self.token_size:
+                chunks.append(
+                    {
+                        "id": str(uuid.uuid1()),
+                        "contents": " ".join(chunk_words),
+                        "metadata": json.dumps({"filename": filename, "page_numbers": None, "title": None}),
+                    }
+                )
+                chunk_words = []
+        if chunk_words:
+            chunks.append(
+                {
+                    "id": str(uuid.uuid1()),
+                    "contents": " ".join(chunk_words),
+                    "metadata": json.dumps({"filename": filename, "page_numbers": None, "title": None}),
+                }
+            )
+        return chunks
+
+    def _chunk_tsv(self, file_path):
+        filename = os.path.basename(file_path)
+        df = pd.read_csv(file_path, sep="\t")
+        metadata = json.dumps({"filename": filename, "page_numbers": None, "title": None})
+
+        def row_to_chunk(row):
+            row_text = " | ".join(f"{col}: {val}" for col, val in row.items() if pd.notna(val))
+            if not row_text.strip():
+                return None
+            return {"id": str(uuid.uuid1()), "contents": row_text, "metadata": metadata}
+
+        return [c for c in df.apply(row_to_chunk, axis=1) if c is not None]
 
     def _chunking_documents_with_docling(self, pdf_path):
         def extract_text_from_chunk(chunks, filename):
@@ -238,8 +287,31 @@ class VectorStoreCreator(Gemini):
         result = self.converter.convert(source=pdf_path)
         chunk_iter = self.chunker.chunk(dl_doc=result.document)
         chunks = list(chunk_iter)
-        for picture in result.document.pictures:
-            image_chunks.append(extract_image_from_chunk(picture, pdf_path))
+
+        ext = os.path.splitext(pdf_path)[1].lower()
+        if ext in {".jpg", ".jpeg", ".png"}:
+            with PILImage.open(pdf_path) as img:
+                if img.mode not in ("RGB", "L"):
+                    img = img.convert("RGB")
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG")
+                b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            image_chunks.append(
+                {
+                    "id": str(uuid.uuid1()),
+                    "contents": b64,
+                    "metadata": json.dumps(
+                        {
+                            "filename": os.path.basename(pdf_path),
+                            "page_numbers": None,
+                            "title": None,
+                        }
+                    ),
+                }
+            )
+        else:
+            for picture in result.document.pictures:
+                image_chunks.append(extract_image_from_chunk(picture, pdf_path))
 
         text_chunks = extract_text_from_chunk(chunks, pdf_path)
         return text_chunks, image_chunks
@@ -255,7 +327,7 @@ class VectorStoreCreator(Gemini):
         if df.empty:
             logging.info("DataFrame is empty, skipping summarization.")
             return df
-        if not self.summarize:
+        if not self.summarize and content != "image":
             logging.info("Skipping summarization...")
             summarized_df = df.copy()
             summarized_df["summary"] = summarized_df["contents"].apply(self.clean_text)
@@ -286,9 +358,15 @@ class VectorStoreCreator(Gemini):
         all_image_chunks = []
 
         for pdf_path in self.pdf_paths:
-            text_chunks, image_chunks = self._chunking_documents_with_docling(pdf_path)
-            all_text_chunks.extend(text_chunks)
-            all_image_chunks.extend(image_chunks)
+            ext = os.path.splitext(pdf_path)[1].lower()
+            if ext == ".txt":
+                all_text_chunks.extend(self._chunk_txt(pdf_path))
+            elif ext == ".tsv":
+                all_text_chunks.extend(self._chunk_tsv(pdf_path))
+            else:
+                text_chunks, image_chunks = self._chunking_documents_with_docling(pdf_path)
+                all_text_chunks.extend(text_chunks)
+                all_image_chunks.extend(image_chunks)
 
         text_chunks_df = pd.DataFrame(all_text_chunks)
         image_chunks_df = pd.DataFrame(all_image_chunks)

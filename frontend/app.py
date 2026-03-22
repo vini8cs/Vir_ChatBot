@@ -1,5 +1,6 @@
 import asyncio
 import json
+import mimetypes
 import os
 from datetime import datetime
 from typing import Any, Coroutine
@@ -15,8 +16,6 @@ GEMINI_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.5-pro",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
 ]
 
 
@@ -153,10 +152,20 @@ async def list_pdfs_api() -> list:
 
 
 async def upload_pdfs_api(files) -> dict:
-    """Upload PDFs to create/update vectorstore."""
+    """Upload documents to create/update vectorstore."""
     url = f"{API_BASE_URL}/create-vectorstore-based-on-selected-pdfs/"
 
-    files_to_upload = [("files", (file.name, file.getvalue(), "application/pdf")) for file in files]
+    files_to_upload = [
+        (
+            "files",
+            (
+                file.name,
+                file.getvalue(),
+                mimetypes.guess_type(file.name)[0] or "application/octet-stream",
+            ),
+        )
+        for file in files
+    ]
 
     async with httpx.AsyncClient() as client:
         try:
@@ -250,6 +259,18 @@ async def get_task_status_api(task_id: str) -> dict:
             return response.json()
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             return {"error": str(e), "status": "ERROR"}
+
+
+async def cancel_task_api(task_id: str) -> dict:
+    """Cancel a running or pending task."""
+    url = f"{API_BASE_URL}/tasks/{task_id}"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(url)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            return {"error": str(e)}
 
 
 async def gather_tasks(names: list[str], tasks: list[Coroutine[Any, Any, Any]]) -> dict:
@@ -439,6 +460,10 @@ async def render_task_progress():
         create_failure_task(status)
         return False, True
 
+    def _handle_revoked(status, task_name, task_id):
+        st.warning("🚫 Task cancelled.")
+        return False, True
+
     def _handle_unknown(status, task_name, task_id):
         st.warning(f"⚠️ Status: {status.get('status', 'UNKNOWN')}")
         return True, False
@@ -448,6 +473,7 @@ async def render_task_progress():
         "PROGRESS": _handle_progress,
         "SUCCESS": _handle_success,
         "FAILURE": _handle_failure,
+        "REVOKED": _handle_revoked,
     }
 
     for task_id, task_info in list(st.session_state.active_tasks.items()):
@@ -479,8 +505,17 @@ async def render_task_progress():
                     tasks_to_remove.append(task_id)
 
             with col2:
-                if not remove_flag:
-                    st.caption(f"ID: {task_id[:8]}...")
+                if not remove_flag and st.button(
+                    "🚫 Cancel",
+                    key=f"cancel_{task_id}",
+                    use_container_width=True,
+                ):
+                    result = await cancel_task_api(task_id)
+                    if "error" in result:
+                        st.error(f"Error: {result['error']}")
+                    else:
+                        remove_active_task(task_id)
+                        st.rerun()
 
         st.divider()
 
@@ -705,21 +740,21 @@ async def run_reload_vectorstore():
 
 async def run_upload_pdfs_vectorstore():
     uploaded_files = st.file_uploader(
-        "Select PDFs",
-        type=["pdf"],
+        "Select files (PDF, DOCX, JPEG, PNG, TXT, TSV)",
+        type=["pdf", "docx", "doc", "jpg", "jpeg", "png", "txt", "tsv"],
         accept_multiple_files=True,
         key="pdf_uploader",
     )
 
     if uploaded_files and st.button("📤 Upload and Create VectorStore", use_container_width=True):
-        with st.spinner("Uploading PDFs..."):
+        with st.spinner("Uploading files..."):
             result = await upload_pdfs_api(uploaded_files)
             if "error" in result:
                 return st.error(f"Error: {result['error']}")
-            st.success(f"✅ {result.get('message', 'PDFs uploaded!')}")
+            st.success(f"✅ {result.get('message', 'Files uploaded!')}")
             task_id = result.get("task_id")
             if task_id:
-                add_active_task(task_id, f"Upload of {len(uploaded_files)} PDF(s)")
+                add_active_task(task_id, f"Upload of {len(uploaded_files)} file(s)")
                 st.rerun()
             return
 
@@ -784,16 +819,16 @@ async def check_selected_pdfs():
     pdf_list = st.session_state.pdf_list
 
     if not pdf_list:
-        return st.info("No PDFs found in VectorStore.")
+        return st.info("No documents found in VectorStore.")
 
-    st.markdown(f"**{len(pdf_list)} PDF(s) found**")
+    st.markdown(f"**{len(pdf_list)} document(s) found**")
 
-    search_term = st.text_input("🔍 Search PDF", key="pdf_search")
+    search_term = st.text_input("🔍 Search document", key="pdf_search")
 
     filtered_pdfs = [pdf for pdf in pdf_list if search_term.lower() in pdf.lower()] if search_term else pdf_list
 
     selected = st.multiselect(
-        "Select PDFs to delete:",
+        "Select documents to delete:",
         options=filtered_pdfs,
         default=[],
         key="pdf_multiselect",
@@ -802,18 +837,18 @@ async def check_selected_pdfs():
     if not selected:
         return
 
-    st.warning(f"⚠️ {len(selected)} PDF(s) selected for deletion")
+    st.warning(f"⚠️ {len(selected)} document(s) selected for deletion")
 
     if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
-        with st.spinner("Deleting PDFs..."):
+        with st.spinner("Deleting documents..."):
             result = await delete_pdfs_api(selected)
             if "error" in result:
                 st.error(f"Error: {result['error']}")
             else:
-                st.success(f"✅ {result.get('message', 'PDFs deleted!')}")
+                st.success(f"✅ {result.get('message', 'Documents deleted!')}")
                 task_id = result.get("task_id")
                 if task_id:
-                    add_active_task(task_id, f"Delete {len(selected)} PDF(s)")
+                    add_active_task(task_id, f"Delete {len(selected)} document(s)")
                 st.session_state.pdf_list = await list_pdfs_api()
                 st.rerun()
 
@@ -922,12 +957,12 @@ async def main():
         await run_reload_vectorstore()
 
         with st.expander("➕ Create VectorStore", expanded=False):
-            st.markdown("**Option 1: Upload PDFs**")
+            st.markdown("**Option 1: Upload Files**")
             await run_upload_pdfs_vectorstore()
 
             st.markdown("---")
             st.markdown("**Option 2: Create from Folder**")
-            st.caption("Creates the VectorStore from the configured PDFs folder.")
+            st.caption("Creates the VectorStore from the configured documents folder.")
             await run_create_from_folder_vectorstore()
 
             st.markdown("---")
@@ -935,7 +970,7 @@ async def main():
             st.caption("Define if the summarization of context with AI should be enabled during VectorStore creation.")
             await run_vectorstore_settings()
 
-        with st.expander("📋 PDFs in VectorStore", expanded=False):
+        with st.expander("📋 Documents in VectorStore", expanded=False):
             await check_selected_pdfs()
 
         st.divider()
