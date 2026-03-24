@@ -7,9 +7,25 @@ from fastapi import APIRouter, HTTPException
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 import config as _
-from backend.models import CreateThreadRequest, ThreadResponse
+from backend.models import (
+    CreateThreadRequest,
+    RenameThreadRequest,
+    ThreadResponse,
+)
 
 router = APIRouter(prefix="/threads", tags=["threads"])
+
+
+async def _ensure_thread_names_table(conn):
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS thread_names (
+            thread_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        )
+        """
+    )
+    await conn.commit()
 
 
 @router.post("/create", response_model=ThreadResponse)
@@ -32,20 +48,53 @@ async def get_user_threads(user_id: str):
 
     try:
         async with aiosqlite.connect(_.SQLITE_MEMORY_DATABASE) as conn:
+            await _ensure_thread_names_table(conn)
             query = """
-            SELECT DISTINCT thread_id
-            FROM checkpoints
-            WHERE json_extract(CAST(metadata AS TEXT), '$.user_id') = ?
+            SELECT c.thread_id, tn.name
+            FROM (
+                SELECT DISTINCT thread_id
+                FROM checkpoints
+                WHERE json_extract(CAST(metadata AS TEXT), '$.user_id') = ?
+            ) c
+            LEFT JOIN thread_names tn ON c.thread_id = tn.thread_id
             """  # noqa: W291
             async with conn.execute(query, (user_id,)) as cur:
                 rows = await cur.fetchall()
 
-            return {"threads": [{"thread_id": r[0]} for r in rows]}
+            return {
+                "threads": [{"thread_id": r[0], "name": r[1]} for r in rows]
+            }
 
     except Exception as e:
         if "no such table" in str(e).lower():
             return {"threads": []}
         logging.error(f"Database error: {e}")
+        raise HTTPException(
+            status_code=500, detail="Internal Server Error"
+        ) from e
+
+
+@router.patch("/{thread_id}/name")
+async def rename_thread(thread_id: str, request: RenameThreadRequest):
+    """Set or update the display name for a thread."""
+    if not os.path.exists(_.SQLITE_MEMORY_DATABASE):
+        raise HTTPException(status_code=404, detail="Database not found")
+
+    try:
+        async with aiosqlite.connect(_.SQLITE_MEMORY_DATABASE) as conn:
+            await _ensure_thread_names_table(conn)
+            await conn.execute(
+                """
+                INSERT INTO thread_names (thread_id, name)
+                VALUES (?, ?)
+                ON CONFLICT(thread_id) DO UPDATE SET name = excluded.name
+                """,
+                (thread_id, request.name),
+            )
+            await conn.commit()
+        return {"thread_id": thread_id, "name": request.name}
+    except Exception as e:
+        logging.error(f"Error renaming thread {thread_id}: {e}")
         raise HTTPException(
             status_code=500, detail="Internal Server Error"
         ) from e

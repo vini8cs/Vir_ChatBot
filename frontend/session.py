@@ -19,6 +19,8 @@ async def start_session_data(user_id: str):
         st.session_state.messages = {}
     if "active_tasks" not in st.session_state:
         st.session_state.active_tasks = {}
+    if "thread_names" not in st.session_state:
+        st.session_state.thread_names = {}
 
     need_threads = "threads_id" not in st.session_state
     need_config = "runtime_config" not in st.session_state
@@ -41,6 +43,10 @@ async def start_session_data(user_id: str):
 
     if need_threads and threads_result is not None:
         st.session_state.threads_id = [t["thread_id"] for t in threads_result]
+        st.session_state.thread_names = {
+            t["thread_id"]: t.get("name") or f"{t['thread_id'][:8]}..."
+            for t in threads_result
+        }
 
     if need_config and config_result is not None:
         st.session_state.runtime_config = config_result
@@ -71,6 +77,7 @@ async def create_new_thread(user_id: str):
     st.session_state.threads_id.append(thread_id)
     st.session_state.selected_thread = thread_id
     st.session_state.messages[thread_id] = []
+    st.session_state.thread_names[thread_id] = f"{thread_id[:8]}..."
     st.rerun()
 
 

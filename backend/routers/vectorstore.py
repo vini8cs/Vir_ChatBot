@@ -41,7 +41,9 @@ SUPPORTED_EXTENSIONS = {
 async def reload_vectorstore():
     """Endpoint to reload the VectorStore into memory."""
     try:
-        state.global_resources["retriever"] = await load_global_vectorstore()
+        state.global_resources["retriever"] = await load_global_vectorstore(
+            retriever_limit=state.runtime_config.retriever_limit
+        )
         if state.global_resources["retriever"]:
             return {
                 "status": "success",
@@ -84,7 +86,8 @@ async def upload_pdf(
     files_to_upload = []
     try:
         for file in files:
-            file_path = os.path.join(upload_dir, file.filename)
+            safe_name = Path(file.filename).name
+            file_path = os.path.join(upload_dir, safe_name)
             async with aiofiles.open(file_path, "wb") as out_file:
                 content = await file.read()
                 await out_file.write(content)

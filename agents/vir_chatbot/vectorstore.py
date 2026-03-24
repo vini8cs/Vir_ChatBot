@@ -38,7 +38,6 @@ SUPPORTED_EXTENSIONS = {
     ".txt",
     ".tsv",
 }
-DOCLING_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png"}
 
 
 class NoNewPDFError(Exception):
@@ -125,7 +124,7 @@ class VectorStoreCreator(Gemini):
             self.pdfs_to_add = pdfs_to_add
 
     @staticmethod
-    def clean_text(text: str) -> str:
+    def clean_text(text: str) -> str | None:
         if (
             isinstance(text, str)
             and len(text.split()) > 3

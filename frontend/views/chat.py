@@ -1,10 +1,14 @@
 import streamlit as st
-from api_client import chat_stream_api
+from api_client import chat_stream_api, rename_thread_api
 from session import add_message, create_new_thread, get_current_messages
 
 
 async def run_chat():
-    st.header(f"💬 Conversation: {st.session_state.selected_thread[:8]}...")
+    thread_id = st.session_state.selected_thread
+    thread_name = st.session_state.thread_names.get(
+        thread_id, f"{thread_id[:8]}..."
+    )
+    st.header(f"💬 {thread_name}")
     chat_container = st.container()
     with chat_container:
         for message in get_current_messages():
@@ -15,6 +19,7 @@ async def run_chat():
     if not prompt:
         return
 
+    is_first_message = len(get_current_messages()) == 0
     add_message("user", prompt)
 
     with st.chat_message("user"):
@@ -35,6 +40,12 @@ async def run_chat():
         message_placeholder.markdown(full_response)
 
     add_message("assistant", full_response)
+
+    if is_first_message:
+        title = prompt[:45].strip() + ("..." if len(prompt) > 45 else "")
+        await rename_thread_api(thread_id, title)
+        st.session_state.thread_names[thread_id] = title
+        st.rerun()
 
 
 async def run_chat_no_thread():

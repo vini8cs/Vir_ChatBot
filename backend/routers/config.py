@@ -64,7 +64,9 @@ async def reset_config_and_reload():
     state._save_persisted_config(state.runtime_config)
 
     try:
-        state.global_resources["retriever"] = await load_global_vectorstore()
+        state.global_resources["retriever"] = await load_global_vectorstore(
+            retriever_limit=state.runtime_config.retriever_limit
+        )
         return {
             "status": "success",
             "message": "Configuration reset and VectorStore reloaded",

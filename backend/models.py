@@ -63,6 +63,10 @@ class CreateThreadRequest(BaseModel):
     )
 
 
+class RenameThreadRequest(BaseModel):
+    name: str = Field(..., description="Display name for the thread")
+
+
 class ThreadResponse(BaseModel):
     thread_id: str
     user_id: str

@@ -50,6 +50,17 @@ async def create_thread_api(user_id: str) -> dict:
             return {}
 
 
+async def rename_thread_api(thread_id: str, name: str) -> dict:
+    url = f"{API_BASE_URL}/threads/{thread_id}/name"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.patch(url, json={"name": name})
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            return {"error": str(e)}
+
+
 async def delete_thread_api(user_id: str, thread_id: str) -> dict:
     url = f"{API_BASE_URL}/threads/{user_id}/{thread_id}"
     async with httpx.AsyncClient() as client:
@@ -111,7 +122,9 @@ async def chat_stream_api(message: str, thread_id: str, user_id: str):
                     if "content" in payload:
                         yield payload["content"]
                     else:
-                        yield f"❌ Error: {payload.get('error', 'Unknown error')}"
+                        yield f"❌ Error: {
+                            payload.get('error', 'Unknown error')
+                        }"
                 except json.JSONDecodeError:
                     continue
 

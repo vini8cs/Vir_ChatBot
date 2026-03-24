@@ -39,7 +39,9 @@ async def lifespan(app: FastAPI):
 
     logging.info("Loading VectorStore into memory...")
     try:
-        state.global_resources["retriever"] = await load_global_vectorstore()
+        state.global_resources["retriever"] = await load_global_vectorstore(
+            retriever_limit=state.runtime_config.retriever_limit
+        )
         if state.global_resources["retriever"]:
             logging.info("VectorStore loaded successfully!")
         else:

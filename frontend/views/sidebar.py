@@ -14,12 +14,13 @@ async def threads_management_sidebar():
 
     for thread_id in st.session_state.threads_id:
         is_selected = thread_id == st.session_state.selected_thread
+        name = st.session_state.thread_names.get(
+            thread_id, f"{thread_id[:8]}..."
+        )
 
         col1, col2 = st.columns([5, 1])
         with col1:
-            button_label = (
-                f"{'✅ ' if is_selected else '💬 '}{thread_id[:8]}..."
-            )
+            button_label = f"{'✅ ' if is_selected else '💬 '}{name}"
             if st.button(
                 button_label,
                 key=f"select_{thread_id}",
@@ -49,6 +50,13 @@ async def first_setup():
         or st.session_state.get("initialized_user")
         != st.session_state.user_id
     ):
+        for key in (
+            "threads_id",
+            "messages",
+            "selected_thread",
+            "thread_names",
+        ):
+            st.session_state.pop(key, None)
         await start_session_data(st.session_state.user_id)
         st.session_state.initialized_user = st.session_state.user_id
 
