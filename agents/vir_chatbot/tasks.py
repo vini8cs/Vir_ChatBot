@@ -22,7 +22,9 @@ app = Celery(
 )
 
 
-def update_task_progress(task, current: int, total: int, step: str, details: str = ""):
+def update_task_progress(
+    task, current: int, total: int, step: str, details: str = ""
+):
     task.update_state(
         state="PROGRESS",
         meta={
@@ -43,7 +45,7 @@ def create_vectorstore_uploaded_pdfs(
     gemini_model: str = "gemini-2.5-flash",
 ):
     total_steps = 5
-    logging.info("Building/adding new PDFs to vectorstore...")
+    logging.info("Building/adding new documents to vectorstore...")
     logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
     try:
         update_task_progress(
@@ -59,7 +61,9 @@ def create_vectorstore_uploaded_pdfs(
             summarize=summarize,
             gemini_model=gemini_model,
         )
-        vector_store_creator.pdf_paths = vector_store_creator.pdfs_to_add.copy()
+        vector_store_creator.pdf_paths = (
+            vector_store_creator.pdfs_to_add.copy()
+        )
 
         update_task_progress(
             self,
@@ -72,10 +76,22 @@ def create_vectorstore_uploaded_pdfs(
             vector_store_creator._load_cache()
             vector_store_creator._diff_vs_cache()
 
-        update_task_progress(self, 3, total_steps, "Chunking", "Chunking PDF(s) with Docling...")
+        update_task_progress(
+            self,
+            3,
+            total_steps,
+            "Chunking",
+            "Chunking PDF(s) with Docling...",
+        )
         vector_store_creator._start_chunking_process()
 
-        update_task_progress(self, 4, total_steps, "VectorStore", "Updating/Building VectorStore...")
+        update_task_progress(
+            self,
+            4,
+            total_steps,
+            "VectorStore",
+            "Updating/Building VectorStore...",
+        )
         vector_store_creator._processing_faiss_vectorstore_data()
 
         if vector_store_creator._check_vectorstore_exists():
@@ -84,7 +100,9 @@ def create_vectorstore_uploaded_pdfs(
         else:
             vector_store_creator._save_faiss_vectorstore()
 
-        update_task_progress(self, 5, total_steps, "Saving in cache", "Saving cache...")
+        update_task_progress(
+            self, 5, total_steps, "Saving in cache", "Saving cache..."
+        )
         vector_store_creator._save_cache()
 
         return {
@@ -122,13 +140,22 @@ def create_vectorstore_from_folder(
     total_steps = 6
     logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
     try:
-        update_task_progress(self, 1, total_steps, "Starting", "Searching for PDFs in folder...")
+        update_task_progress(
+            self,
+            1,
+            total_steps,
+            "Starting",
+            "Searching for PDFs in folder...",
+        )
 
         vector_store_creator = VectorStoreCreator(
             summarize=summarize,
             gemini_model=gemini_model,
         )
-        if vector_store_creator._check_chache() or vector_store_creator._check_vectorstore_exists():
+        if (
+            vector_store_creator._check_chache()
+            or vector_store_creator._check_vectorstore_exists()
+        ):
             raise VectorAlreadyCreatedError
         vector_store_creator._find_pdf()
 
@@ -142,16 +169,21 @@ def create_vectorstore_from_folder(
         )
         vector_store_creator._start_chunking_process()
 
-        update_task_progress(self, 3, total_steps, "VectorStore", "Creating VectorStore...")
+        update_task_progress(
+            self, 3, total_steps, "VectorStore", "Creating VectorStore..."
+        )
         vector_store_creator._processing_faiss_vectorstore_data()
         vector_store_creator._save_faiss_vectorstore()
 
-        update_task_progress(self, 4, total_steps, "Finishing", "Saving cache...")
+        update_task_progress(
+            self, 4, total_steps, "Finishing", "Saving cache..."
+        )
         vector_store_creator._save_cache()
 
         return {
             "status": "Success",
-            "message": f"VectorStore created from scratch with {pdf_count} PDF(s).",
+            "message": "VectorStore created from scratch"
+            f" with {pdf_count} PDF(s).",
             "current": total_steps,
             "total": total_steps,
             "percent": 100,
@@ -187,7 +219,9 @@ def delete_pdfs_from_vectorstore(self, filenames: List[str]):
         vector_store_creator._load_cache()
         vector_store_creator.recover_deleted_pdfs_from_cache()
 
-        update_task_progress(self, 3, total_steps, "Deleting", "Deleting from VectorStore...")
+        update_task_progress(
+            self, 3, total_steps, "Deleting", "Deleting from VectorStore..."
+        )
 
         if not vector_store_creator._check_vectorstore_exists():
             raise NoVectorStoreFoundError
@@ -195,12 +229,15 @@ def delete_pdfs_from_vectorstore(self, filenames: List[str]):
         vector_store_creator._load_faiss_vectorstore()
         vector_store_creator.delete_uuids_from_vectorstore()
 
-        update_task_progress(self, 4, total_steps, "Finishing", "Updating cache...")
+        update_task_progress(
+            self, 4, total_steps, "Finishing", "Updating cache..."
+        )
         vector_store_creator._reformat_chache_after_deletion()
 
         return {
             "status": "Success",
-            "message": f"{len(filenames)} file(s) deleted successfully: {', '.join(filenames)}",
+            "message": f"{len(filenames)} file(s) deleted"
+            f" successfully: {', '.join(filenames)}",
             "current": total_steps,
             "total": total_steps,
             "percent": 100,

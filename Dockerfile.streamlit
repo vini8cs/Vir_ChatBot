@@ -22,6 +22,7 @@ COPY frontend/pyproject.toml frontend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY frontend/*.py ./
+COPY frontend/views/ ./views/
 
 ENV PATH="/app/frontend/.venv/bin:$PATH"
 

@@ -7,7 +7,9 @@ class TokenizerWrapper(BaseTokenizer):
     Hugging Face tokenizer wrapper compatible with Docling HybridChunker.
     """
 
-    def __init__(self, model_name="mistralai/Mistral-7B-v0.1", max_length=8191):
+    def __init__(
+        self, model_name="mistralai/Mistral-7B-v0.1", max_length=8191
+    ):
         super().__init__()
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._tokenizer.model_max_length = max_length
