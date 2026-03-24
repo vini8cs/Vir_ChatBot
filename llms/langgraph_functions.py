@@ -41,5 +41,7 @@ async def query_or_respond(
         system_prompt if system_prompt is not None else TOOL_CALLER_PROMPT
     )
     sys_message = [SystemMessage(content=prompt)]
-    response = await llm_with_tools.ainvoke(sys_message + state["messages"])
+    response = await llm_with_tools.ainvoke(
+        sys_message + state["messages"], config
+    )
     return {"messages": [response]}

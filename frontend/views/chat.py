@@ -34,7 +34,7 @@ async def run_chat():
             thread_id=st.session_state.selected_thread,
             user_id=st.session_state.user_id,
         ):
-            full_response = chunk
+            full_response += chunk
             message_placeholder.markdown(full_response + "▌")
 
         message_placeholder.markdown(full_response)

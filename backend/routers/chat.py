@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessageChunk, HumanMessage
 
 import backend.state as state
 from agents.vir_chatbot.vir_chatbot import create_graph
@@ -37,7 +37,8 @@ async def _create_graph_retriever(retriever, config, max_retries=3):
 
 async def _chat_generator(user_input: str, thread_id: str, user_id: str):
     """
-    Generates the streaming response and ensures the database connection is closed.
+    Generates the streaming response and
+    ensures the database connection is closed.
     Uses runtime_config for LLM settings.
     """
     retriever = state.global_resources.get("retriever")
@@ -58,23 +59,17 @@ async def _chat_generator(user_input: str, thread_id: str, user_id: str):
     }
 
     try:
-        async for event in graph.astream(
+        async for chunk, _ in graph.astream(
             {"messages": [HumanMessage(content=user_input)]},
             graph_config,
-            stream_mode="values",
+            stream_mode="messages",
         ):
-            messages = event.get("messages", [])
-            if not messages:
+            if not isinstance(chunk, AIMessageChunk):
                 continue
-            last_msg = messages[-1]
-
-            if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+            if getattr(chunk, "tool_call_chunks", None):
                 continue
 
-            if last_msg.type != "ai":
-                continue
-
-            content = last_msg.content
+            content = chunk.content
             if isinstance(content, list):
                 content = " ".join(
                     part.get("text", "")
@@ -97,7 +92,8 @@ async def _chat_generator(user_input: str, thread_id: str, user_id: str):
         error_msg = str(e)
         logging.error(f"Error during chat generation: {error_msg}")
         if "database is locked" in error_msg.lower():
-            error_msg = "The system is busy updating. Please try again in a few seconds."
+            error_msg = "The system is busy updating. "
+            "Please try again in a few seconds."
         yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
     finally:
