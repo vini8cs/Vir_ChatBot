@@ -39,13 +39,13 @@ async def run_chat():
 
         message_placeholder.markdown(full_response)
 
-    add_message("assistant", full_response)
+    if full_response.strip():
+        add_message("assistant", full_response)
 
-    if is_first_message:
+    if is_first_message and full_response.strip():
         title = prompt[:45].strip() + ("..." if len(prompt) > 45 else "")
         await rename_thread_api(thread_id, title)
         st.session_state.thread_names[thread_id] = title
-        st.rerun()
 
 
 async def run_chat_no_thread():

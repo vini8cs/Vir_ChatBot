@@ -187,7 +187,13 @@ async def get_thread_messages(thread_id: str):
                 msg_type = msg.type
                 msg_content = msg.content
                 if isinstance(msg_content, list):
-                    continue
+                    msg_content = " ".join(
+                        part.get("text", "")
+                        for part in msg_content
+                        if isinstance(part, dict)
+                        and part.get("type") == "text"
+                        and part.get("text")
+                    ).strip()
                 if msg_type in ["human", "ai"] and msg_content:
                     role = "user" if msg_type == "human" else "assistant"
                     messages.append({"role": role, "content": msg_content})

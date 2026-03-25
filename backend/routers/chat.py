@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessageChunk, HumanMessage
+from langchain_core.messages import HumanMessage
 
 import backend.state as state
 from agents.vir_chatbot.vir_chatbot import create_graph
@@ -59,13 +59,16 @@ async def _chat_generator(user_input: str, thread_id: str, user_id: str):
     }
 
     try:
-        async for chunk, _ in graph.astream(
+        async for event in graph.astream_events(
             {"messages": [HumanMessage(content=user_input)]},
             graph_config,
-            stream_mode="messages",
+            version="v2",
         ):
-            if not isinstance(chunk, AIMessageChunk):
+            if event["event"] != "on_chat_model_stream":
                 continue
+
+            chunk = event["data"]["chunk"]
+
             if getattr(chunk, "tool_call_chunks", None):
                 continue
 
@@ -92,7 +95,7 @@ async def _chat_generator(user_input: str, thread_id: str, user_id: str):
         error_msg = str(e)
         logging.error(f"Error during chat generation: {error_msg}")
         if "database is locked" in error_msg.lower():
-            error_msg = "The system is busy updating. "
+            error_msg = "The system is busy updating."
             "Please try again in a few seconds."
         yield f"data: {json.dumps({'error': error_msg})}\n\n"
 

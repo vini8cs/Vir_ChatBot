@@ -304,6 +304,7 @@ After starting the services, access (using default ports):
 
 3. **Thread Management**:
    - Create multiple conversations
+   - Threads are automatically named after the first message
    - Switch between threads
    - Delete old conversations
 
@@ -329,24 +330,40 @@ After starting the services, access (using default ports):
 Vir_ChatBot/
 ├── agents/
 │   └── vir_chatbot/
-│       ├── vectorstore.py    # Vectorstore creation and management
-│       ├── vir_chatbot.py    # Main LangGraph agent
-│       └── tasks.py          # Celery tasks (background)
+│       ├── vectorstore.py       # Vectorstore creation and management
+│       ├── vir_chatbot.py       # Main LangGraph agent
+│       └── tasks.py             # Celery tasks (background)
 ├── backend/
-│   └── api.py                # FastAPI endpoints
+│   ├── api.py                   # FastAPI app entry point (lifespan, include_router)
+│   ├── state.py                 # Shared app state (runtime_config, global_resources)
+│   ├── models.py                # Pydantic models and shared types
+│   └── routers/
+│       ├── chat.py              # POST /chat/stream
+│       ├── config.py            # GET|PUT /config, POST /config/reset*
+│       ├── tasks.py             # GET|DELETE /tasks/{task_id}
+│       ├── threads.py           # GET|POST|DELETE /threads/*
+│       └── vectorstore.py       # POST /vectorstore/reload, upload, delete, list
 ├── frontend/
-│   └── app.py                # Streamlit interface
+│   ├── app.py                   # Streamlit entry point (main + page config)
+│   ├── api_client.py            # All HTTP calls to the backend
+│   ├── session.py               # Session state helpers (threads, messages, tasks)
+│   └── views/
+│       ├── sidebar.py           # User setup + thread list sidebar
+│       ├── chat.py              # Chat window and message streaming
+│       ├── config.py            # LLM settings and system prompt UI
+│       ├── tasks.py             # Background task progress bars
+│       └── vectorstore.py       # Upload, delete, and list documents UI
 ├── llms/
-│   ├── gemini.py             # Gemini API wrapper
-│   ├── langgraph_functions.py# Agent graph functions
-│   └── tokenizer.py          # Tokenizer wrapper
+│   ├── gemini.py                # Gemini API wrapper
+│   ├── langgraph_functions.py   # Agent graph functions
+│   └── tokenizer.py             # Tokenizer wrapper
 ├── templates/
-│   ├── prompts.py            # System prompts
-│   └── schemas.py            # Response schemas
-├── config.py                 # Configuration and environment variables
-├── compose.yaml              # Docker Compose
-├── Dockerfile                # API Dockerfile
-└── Dockerfile.streamlit      # Streamlit Dockerfile
+│   ├── prompts.py               # System prompts
+│   └── schemas.py               # Response schemas
+├── config.py                    # Configuration and environment variables
+├── compose.yaml                 # Docker Compose
+├── Dockerfile                   # API Dockerfile
+└── Dockerfile.streamlit         # Streamlit Dockerfile
 ```
 
 ---

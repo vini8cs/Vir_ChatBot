@@ -67,7 +67,8 @@ async def load_global_vectorstore(retriever_limit: int | None = None):
     vectorstore_index = os.path.join(_.VECTORSTORE_PATH, "index.faiss")
     if not os.path.exists(vectorstore_index):
         logging.info(
-            f"VectorStore not found at {_.VECTORSTORE_PATH}. It will be created when PDFs are added."
+            f"VectorStore not found at {_.VECTORSTORE_PATH}. "
+            "It will be created when PDFs are added."
         )
         return None
 
@@ -92,14 +93,11 @@ async def create_graph(
     max_retries: int | None = None,
     system_prompt: str | None = None,
 ):
-    # Use WAL mode connection string for better concurrency
     db_path = _.SQLITE_MEMORY_DATABASE
-    conn_string = f"file:{db_path}?mode=rwc"
 
-    checkpointer_cm = AsyncSqliteSaver.from_conn_string(conn_string)
+    checkpointer_cm = AsyncSqliteSaver.from_conn_string(db_path)
     checkpointer = await checkpointer_cm.__aenter__()
 
-    # Enable WAL mode for better concurrent access
     if hasattr(checkpointer, "conn") and checkpointer.conn:
         await checkpointer.conn.execute("PRAGMA journal_mode=WAL;")
         await checkpointer.conn.execute(

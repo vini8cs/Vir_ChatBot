@@ -11,7 +11,7 @@ services:
       - ${PDF_FOLDER}:/app/pdfs/
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
-      - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
+      - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
       - temp_uploads:/tmp/temp_uploads
     environment:
       - PYTHONUNBUFFERED=1
@@ -46,7 +46,7 @@ services:
       - ${PDF_FOLDER}:/app/pdfs/
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
-      - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
+      - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
       - temp_uploads:/tmp/temp_uploads
     environment:
       - PYTHONUNBUFFERED=1
@@ -87,7 +87,7 @@ services:
       - ${PDF_FOLDER}:/app/pdfs/
       - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
-      - ${SQLITE_MEMORY_DATABASE}:/app/db_data/
+      - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
     environment:
       - PYTHONUNBUFFERED=1
       - PUID=${PUID:-1000}
