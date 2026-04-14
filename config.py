@@ -24,10 +24,9 @@ class GeminiConnectionError(ConnectionError):
 
 
 class Settings(BaseSettings):
-    GEMINI_API_KEY: str
-    GCP_CREDENTIALS: str
-    GCP_PROJECT: str
-    GCP_REGION: str
+    # Required when LLM_PROVIDER=gemini or EMBEDDING_PROVIDER=gemini.
+    # Not needed when both providers are set to "local".
+    GEMINI_API_KEY: str = ""
 
     LANGSMITH_API_KEY: str = ""
     LANGSMITH_TRACING_V2: str = "true"
@@ -35,7 +34,6 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = ""
 
     UNSTRUCTURED_API: str = ""
-    PDF_FOLDER: str = "PDFs"
     VECTORSTORE_PATH: str = "vectorstore"
     SQLITE_MEMORY_DATABASE: str = "memory.sqlite"
     CACHE_FOLDER_PATH: str = "cache.csv"
@@ -46,14 +44,25 @@ class Settings(BaseSettings):
     REDIS_COMMANDER_PORT: int = 8081
     STREAMLIT_PORT: int = 8501
 
+    # LLM provider settings
+    LLM_PROVIDER: str = "gemini"  # gemini | openai | anthropic | local
+    LLM_MODEL: str = "gemini-2.5-flash"
+
+    # Embedding provider settings (can differ from LLM_PROVIDER)
+    EMBEDDING_PROVIDER: str = "gemini"  # gemini | openai | local
+    EMBEDDING_MODEL: str = "gemini-embedding-001"
+
+    # Local inference settings
+    # (used when LLM_PROVIDER=local or EMBEDDING_PROVIDER=local)
+    LOCAL_MODEL_BITS: int = 4
+    LOCAL_MODELS_PATH: str = "models"
+
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 
-os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
-os.environ["GOOGLE_API_KEY"] = settings.GEMINI_API_KEY
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.GCP_CREDENTIALS
-os.environ["GOOGLE_CLOUD_PROJECT"] = settings.GCP_PROJECT
-os.environ["GOOGLE_CLOUD_REGION"] = settings.GCP_REGION
+if settings.GEMINI_API_KEY:
+    os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+    os.environ["GOOGLE_API_KEY"] = settings.GEMINI_API_KEY
 
 if settings.LANGSMITH_API_KEY != "" and settings.LANGSMITH_PROJECT != "":
     os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
@@ -61,16 +70,32 @@ if settings.LANGSMITH_API_KEY != "" and settings.LANGSMITH_PROJECT != "":
     os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
     os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
 
-try:
-    logging.info("Initializing Gemini client...")
-    CLIENT_GEMINI = genai.Client()
-except Exception as e:
-    raise GeminiConnectionError(
-        f"Error initializing Gemini client: {e}"
-    ) from e
+CLIENT_GEMINI = None
+if settings.GEMINI_API_KEY:
+    try:
+        logging.info("Initializing Gemini client...")
+        CLIENT_GEMINI = genai.Client()
+    except Exception as e:
+        raise GeminiConnectionError(
+            f"Error initializing Gemini client: {e}"
+        ) from e
+else:
+    logging.info(
+        "GEMINI_API_KEY not set — Gemini client skipped. "
+        "Set LLM_PROVIDER=gemini and provide credentials to use Gemini."
+    )
 
-GEMINI_MODEL = "gemini-2.5-flash"
-EMBEDDING_MODEL = "gemini-embedding-001"
+LLM_PROVIDER = settings.LLM_PROVIDER
+LLM_MODEL = settings.LLM_MODEL
+EMBEDDING_PROVIDER = settings.EMBEDDING_PROVIDER
+EMBEDDING_MODEL = settings.EMBEDDING_MODEL
+LOCAL_MODEL_BITS = settings.LOCAL_MODEL_BITS
+LOCAL_MODELS_PATH = settings.LOCAL_MODELS_PATH
+
+# Legacy alias kept for backward compatibility with the Gemini summarization
+# chain in llms/gemini.py which references GEMINI_MODEL by name.
+GEMINI_MODEL = LLM_MODEL
+
 TEMPERATURE = 0.1
 MAX_OUTPUT_TOKENS = 2048
 TOKEN_SIZE = 2048
@@ -84,7 +109,6 @@ RUNTIME_CONFIG_PATH = os.path.join(
 )
 VECTORSTORE_PATH = settings.VECTORSTORE_PATH
 CACHE_FOLDER = settings.CACHE_FOLDER_PATH
-PDF_FOLDER = settings.PDF_FOLDER
 API_BASE_URL = settings.API_BASE_URL
 RETRIEVER_LIMIT = 5
 THREAD_NUMBER = 1

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,7 +41,9 @@ async def lifespan(app: FastAPI):
     logging.info("Loading VectorStore into memory...")
     try:
         state.global_resources["retriever"] = await load_global_vectorstore(
-            retriever_limit=state.runtime_config.retriever_limit
+            retriever_limit=state.runtime_config.retriever_limit,
+            embedding_provider=state.runtime_config.embedding_provider,
+            embedding_model=state.runtime_config.embedding_model,
         )
         if state.global_resources["retriever"]:
             logging.info("VectorStore loaded successfully!")
@@ -51,6 +54,29 @@ async def lifespan(app: FastAPI):
             f"Error loading VectorStore: {e}. Try creating it first."
         )
         state.global_resources["retriever"] = None
+
+    # Pre-load local model at startup to avoid 30-60s delay on first request.
+    # Gemini is skipped here — it is a lightweight API client instantiated
+    # per-request inside create_graph() at negligible cost.
+    if state.runtime_config.llm_provider == "local":
+        logging.info(
+            "LLM_PROVIDER=local — pre-loading "
+            f"{state.runtime_config.llm_model}..."
+        )
+        try:
+            from llms.local_model import get_local_llm
+
+            await asyncio.to_thread(
+                get_local_llm,
+                state.runtime_config.llm_model,
+                _.LOCAL_MODEL_BITS,
+            )
+            logging.info("Local model pre-loaded successfully.")
+        except Exception as e:
+            logging.error(
+                f"Failed to pre-load local model: {e}. "
+                "Chat requests will attempt to load it on first use."
+            )
 
     yield
 

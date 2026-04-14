@@ -19,7 +19,8 @@ async def _create_graph_retriever(retriever, config, max_retries=3):
         try:
             return await create_graph(
                 global_retriever=retriever,
-                llm_model=config.gemini_model,
+                llm_provider=config.llm_provider,
+                llm_model=config.llm_model,
                 temperature=config.temperature,
                 max_retries=config.max_retries,
                 system_prompt=config.system_prompt,

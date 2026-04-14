@@ -1,11 +1,14 @@
 import json
 import logging
+import os
 import re
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import (
+    ChatGoogleGenerativeAI,
+    GoogleGenerativeAIEmbeddings,
+)
 
 
 class Gemini:
@@ -31,9 +34,17 @@ class Gemini:
         self.summarize_chain_text = None
         self.summarize_chain_image = None
         self.gemini_embedding_model = gemini_embedding_model
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model=self.gemini_embedding_model
-        )
+
+        # Only create Gemini embeddings when an API key is available.
+        # When EMBEDDING_PROVIDER=local, VectorStoreCreator overrides this
+        # with local embeddings after calling super().__init__().
+        if os.environ.get("GOOGLE_API_KEY"):
+            self.embeddings = GoogleGenerativeAIEmbeddings(
+                model=self.gemini_embedding_model
+            )
+        else:
+            self.embeddings = None
+
         if prompt_text:
             self.prompt = PromptTemplate.from_template(prompt_text)
             self._create_sumarized_chain_text()
@@ -50,20 +61,22 @@ class Gemini:
             return None
 
     def _create_sumarized_chain_text(self):
-        self.summarize_chain_text = self.prompt | ChatVertexAI(
+        # ChatGoogleGenerativeAI only needs GEMINI_API_KEY — no GCP service
+        # account or Vertex AI credentials required.
+        self.summarize_chain_text = self.prompt | ChatGoogleGenerativeAI(
             model=self.gemini_model,
             temperature=self.temperature,
-            max_output_tokens=self.max_output_tokens,
+            max_tokens=self.max_output_tokens,
             response_schema=self.response_schema,
             response_mime_type="application/json",
             max_retries=self.max_retries,
         )
 
     def _create_sumarized_chain_image(self):
-        self.summarize_chain_image = ChatVertexAI(
+        self.summarize_chain_image = ChatGoogleGenerativeAI(
             model=self.gemini_model,
             temperature=self.temperature,
-            max_output_tokens=self.max_output_tokens,
+            max_tokens=self.max_output_tokens,
             response_schema=self.response_schema,
             response_mime_type="application/json",
             max_retries=self.max_retries,

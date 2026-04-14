@@ -3,7 +3,7 @@ name = "vir-chatbot"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "celery==5.5.3",
     "redis==6.4.0",
@@ -14,7 +14,7 @@ dependencies = [
     "langchain-community==0.4.1",
     "langchain-core==1.2.20",
     "langchain-google-genai==4.2.1",
-    "langchain-google-vertexai==3.2.2",
+    "langchain-huggingface>=0.1.0",
     "pydantic-settings==2.11.0",
     "faiss-cpu==1.12.0",
     "docling==2.61.1",
@@ -28,24 +28,26 @@ dependencies = [
     "msgpack==1.0.0",
     "torch==2.6.0",
     "torchvision==0.21.0",
+    "transformers>=4.45.0",
+    "bitsandbytes>=0.44.0",
+    "accelerate>=0.26.0",
+    "sentence-transformers>=3.0.0",
 ]
 
 [[tool.uv.index]]
-url = "https://download.pytorch.org/whl/cpu"
-name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cu124"
+name = "pytorch-cuda"
 explicit = true
 
 [tool.uv]
 environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "sys_platform == 'linux' and platform_machine == 'aarch64'",
-    "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
 
 [tool.uv.sources]
-torch = { index = "pytorch-cpu" }
-torchvision = { index = "pytorch-cpu" }
-torchaudio = { index = "pytorch-cpu" }
+torch = { index = "pytorch-cuda" }
+torchvision = { index = "pytorch-cuda" }
+torchaudio = { index = "pytorch-cuda" }
 
 [tool.isort]
 profile = "black"

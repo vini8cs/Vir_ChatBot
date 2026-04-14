@@ -8,21 +8,33 @@ services:
       - .env
     volumes:
       - ${VECTORSTORE_PATH}:/app/vectorstore/
-      - ${PDF_FOLDER}:/app/pdfs/
-      - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
+      - ${LOCAL_MODELS_PATH:-./models}:/app/models/
       - temp_uploads:/tmp/temp_uploads
     environment:
       - PYTHONUNBUFFERED=1
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
-      - PDF_FOLDER=/app/pdfs/
-      - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
       - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
+      - LOCAL_MODELS_PATH=/app/models/
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini-2.5-flash}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-gemini-embedding-001}
+      - LOCAL_MODEL_BITS=${LOCAL_MODEL_BITS:-4}
       - WEB_PORT=${WEB_PORT:-8000}
+    # GPU access: requires nvidia-container-toolkit on the host.
+    # Only active when LLM_PROVIDER=local. Gemini users can remove this block.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     command: uvicorn backend.api:app --host 0.0.0.0 --port ${WEB_PORT:-8000}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${WEB_PORT:-8000}/health"]
@@ -43,27 +55,31 @@ services:
       - .env
     volumes:
       - ${VECTORSTORE_PATH}:/app/vectorstore/
-      - ${PDF_FOLDER}:/app/pdfs/
-      - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
+      - ${LOCAL_MODELS_PATH:-./models}:/app/models/
       - temp_uploads:/tmp/temp_uploads
     environment:
       - PYTHONUNBUFFERED=1
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
-      - PDF_FOLDER=/app/pdfs/
-      - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
       - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
+      - LOCAL_MODELS_PATH=/app/models/
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini-2.5-flash}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-gemini-embedding-001}
+      - LOCAL_MODEL_BITS=${LOCAL_MODEL_BITS:-4}
       - REDIS_PORT=${REDIS_PORT:-6379}
+
   redis:
     image: redis:7
     ports:
       - "${REDIS_PORT:-6379}:${REDIS_PORT:-6379}"
     command: redis-server --port ${REDIS_PORT:-6379}
-  
+
   redis-commander:
     profiles:
       - dev
@@ -84,8 +100,6 @@ services:
       - .env
     volumes:
       - ${VECTORSTORE_PATH}:/app/vectorstore/
-      - ${PDF_FOLDER}:/app/pdfs/
-      - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
     environment:
@@ -93,8 +107,6 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
-      - PDF_FOLDER=/app/pdfs/
-      - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
       - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
       - API_BASE_URL=http://web:${WEB_PORT:-8000}

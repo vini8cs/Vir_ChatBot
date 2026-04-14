@@ -65,7 +65,9 @@ async def reset_config_and_reload():
 
     try:
         state.global_resources["retriever"] = await load_global_vectorstore(
-            retriever_limit=state.runtime_config.retriever_limit
+            retriever_limit=state.runtime_config.retriever_limit,
+            embedding_provider=state.runtime_config.embedding_provider,
+            embedding_model=state.runtime_config.embedding_model,
         )
         return {
             "status": "success",

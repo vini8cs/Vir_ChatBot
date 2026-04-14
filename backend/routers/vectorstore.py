@@ -42,7 +42,9 @@ async def reload_vectorstore():
     """Endpoint to reload the VectorStore into memory."""
     try:
         state.global_resources["retriever"] = await load_global_vectorstore(
-            retriever_limit=state.runtime_config.retriever_limit
+            retriever_limit=state.runtime_config.retriever_limit,
+            embedding_provider=state.runtime_config.embedding_provider,
+            embedding_model=state.runtime_config.embedding_model,
         )
         if state.global_resources["retriever"]:
             return {
@@ -102,7 +104,9 @@ async def upload_pdf(
     task = create_vectorstore_uploaded_pdfs.delay(
         files_to_upload,
         summarize=state.runtime_config.summarize,
-        gemini_model=state.runtime_config.gemini_model,
+        gemini_model=state.runtime_config.llm_model,
+        embedding_provider=state.runtime_config.embedding_provider,
+        embedding_model=state.runtime_config.embedding_model,
     )
 
     return {

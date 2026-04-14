@@ -43,10 +43,15 @@ def create_vectorstore_uploaded_pdfs(
     pdfs_to_add: list[str],
     summarize: bool = False,
     gemini_model: str = "gemini-2.5-flash",
+    embedding_provider: str = "gemini",
+    embedding_model: str = "gemini-embedding-001",
 ):
     total_steps = 5
     logging.info("Building/adding new documents to vectorstore...")
-    logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
+    logging.info(
+        f"Summarize: {summarize}, Model: {gemini_model}, "
+        f"Embeddings: {embedding_provider}/{embedding_model}"
+    )
     try:
         update_task_progress(
             self,
@@ -60,6 +65,8 @@ def create_vectorstore_uploaded_pdfs(
             pdfs_to_add=pdfs_to_add,
             summarize=summarize,
             gemini_model=gemini_model,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
         )
         vector_store_creator.pdf_paths = (
             vector_store_creator.pdfs_to_add.copy()
@@ -136,9 +143,14 @@ def create_vectorstore_from_folder(
     self,
     summarize: bool = False,
     gemini_model: str = "gemini-2.5-flash",
+    embedding_provider: str = "gemini",
+    embedding_model: str = "gemini-embedding-001",
 ):
     total_steps = 6
-    logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
+    logging.info(
+        f"Summarize: {summarize}, Model: {gemini_model}, "
+        f"Embeddings: {embedding_provider}/{embedding_model}"
+    )
     try:
         update_task_progress(
             self,
@@ -151,6 +163,8 @@ def create_vectorstore_from_folder(
         vector_store_creator = VectorStoreCreator(
             summarize=summarize,
             gemini_model=gemini_model,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
         )
         if (
             vector_store_creator._check_chache()

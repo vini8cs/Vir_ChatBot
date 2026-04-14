@@ -23,6 +23,7 @@ from langchain_community.vectorstores import FAISS
 from PIL import Image as PILImage
 
 import config as _
+from llms.factory import get_embeddings
 from llms.gemini import Gemini
 from llms.tokenizer import TokenizerWrapper
 from templates.prompts import PROMPT_IMAGE, PROMPT_TEXT
@@ -83,10 +84,10 @@ class VectorStoreCreator(Gemini):
         self,
         pdfs_to_delete: list[str] = _.PDF_LIST_DEFAULT,
         pdfs_to_add: list[str] = _.PDF_LIST_DEFAULT,
-        pdf_folder: str = _.PDF_FOLDER,
         cache: str = _.CACHE_FOLDER,
         vectorstore_path: str = _.VECTORSTORE_PATH,
         gemini_model: str = _.GEMINI_MODEL,
+        embedding_provider: str = _.EMBEDDING_PROVIDER,
         embedding_model: str = _.EMBEDDING_MODEL,
         temperature: float = _.TEMPERATURE,
         max_output_tokens: int = _.MAX_OUTPUT_TOKENS,
@@ -106,7 +107,7 @@ class VectorStoreCreator(Gemini):
             prompt_image=PROMPT_IMAGE,
             gemini_embedding_model=embedding_model,
         )
-        self.pdf_folder = pdf_folder
+        self.embedding_provider = embedding_provider
         self.embedding_model = embedding_model
         self.token_size = token_size
         self.cache = os.path.join(cache, "cache.csv")
@@ -114,6 +115,14 @@ class VectorStoreCreator(Gemini):
         self.tokenizer_model = tokenizer_model
         self.threads = threads
         self.summarize = summarize
+
+        # Override the embeddings set by Gemini.__init__ with the correct
+        # provider. This keeps the summarization chain (Gemini-only) separate
+        # from the embedding model (provider-agnostic).
+        self.embeddings = get_embeddings(
+            provider=embedding_provider,
+            model=embedding_model,
+        )
 
         self._start_docling_config()
 
@@ -418,6 +427,17 @@ class VectorStoreCreator(Gemini):
         if df.empty:
             logging.info("DataFrame is empty, skipping summarization.")
             return df
+
+        # Image summarization requires calling the Gemini API. Skip it when
+        # no Gemini API key is configured (e.g. EMBEDDING_PROVIDER=local).
+        if content == "image" and self.embedding_provider != "gemini":
+            logging.info(
+                "Skipping image summarization (EMBEDDING_PROVIDER=%s, "
+                "Gemini API not available).",
+                self.embedding_provider,
+            )
+            return pd.DataFrame()
+
         if not self.summarize and content != "image":
             logging.info("Skipping summarization...")
             summarized_df = df.copy()

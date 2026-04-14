@@ -9,14 +9,16 @@ import config as _
 class RuntimeConfig(BaseModel):
     """Runtime configuration that can be modified via API."""
 
-    gemini_model: str = _.GEMINI_MODEL
+    llm_provider: str = _.LLM_PROVIDER
+    llm_model: str = _.LLM_MODEL
+    embedding_provider: str = _.EMBEDDING_PROVIDER
+    embedding_model: str = _.EMBEDDING_MODEL
     temperature: float = _.TEMPERATURE
     max_output_tokens: int = _.MAX_OUTPUT_TOKENS
     max_retries: int = _.MAX_RETRIES
     retriever_limit: int = _.RETRIEVER_LIMIT
     summarize: bool = _.SUMMARIZE
     system_prompt: str = _.SYSTEM_PROMPT
-    embedding_model: str = _.EMBEDDING_MODEL
     token_size: int = _.TOKEN_SIZE
     tokenizer_model: str = _.TOKENIZER_MODEL
     threads: int = _.THREADS
@@ -25,14 +27,16 @@ class RuntimeConfig(BaseModel):
 class ConfigUpdateRequest(BaseModel):
     """Request model for updating configuration."""
 
-    gemini_model: str | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
     temperature: float | None = None
     max_output_tokens: int | None = None
     max_retries: int | None = None
     retriever_limit: int | None = None
     summarize: bool | None = None
     system_prompt: str | None = None
-    embedding_model: str | None = None
     token_size: int | None = None
     tokenizer_model: str | None = None
     threads: int | None = None
