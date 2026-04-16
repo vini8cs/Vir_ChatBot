@@ -3,7 +3,7 @@ import os
 import warnings
 
 from google import genai
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +24,8 @@ class GeminiConnectionError(ConnectionError):
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(extra="ignore")
+
     GEMINI_API_KEY: str
     GCP_CREDENTIALS: str
     GCP_PROJECT: str

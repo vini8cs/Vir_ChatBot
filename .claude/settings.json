@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run pytest -q 2>&1 | tail -15",
+            "statusMessage": "Running pytest..."
+          }
+        ]
+      }
+    ]
+  }
+}
