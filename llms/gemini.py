@@ -4,8 +4,10 @@ import re
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import (
+    ChatGoogleGenerativeAI,
+    GoogleGenerativeAIEmbeddings,
+)
 
 
 class Gemini:
@@ -50,7 +52,7 @@ class Gemini:
             return None
 
     def _create_sumarized_chain_text(self):
-        self.summarize_chain_text = self.prompt | ChatVertexAI(
+        self.summarize_chain_text = self.prompt | ChatGoogleGenerativeAI(
             model=self.gemini_model,
             temperature=self.temperature,
             max_output_tokens=self.max_output_tokens,
@@ -60,7 +62,7 @@ class Gemini:
         )
 
     def _create_sumarized_chain_image(self):
-        self.summarize_chain_image = ChatVertexAI(
+        self.summarize_chain_image = ChatGoogleGenerativeAI(
             model=self.gemini_model,
             temperature=self.temperature,
             max_output_tokens=self.max_output_tokens,

@@ -83,7 +83,6 @@ class VectorStoreCreator(Gemini):
         self,
         pdfs_to_delete: list[str] = _.PDF_LIST_DEFAULT,
         pdfs_to_add: list[str] = _.PDF_LIST_DEFAULT,
-        pdf_folder: str = _.PDF_FOLDER,
         cache: str = _.CACHE_FOLDER,
         vectorstore_path: str = _.VECTORSTORE_PATH,
         gemini_model: str = _.GEMINI_MODEL,
@@ -106,7 +105,6 @@ class VectorStoreCreator(Gemini):
             prompt_image=PROMPT_IMAGE,
             gemini_embedding_model=embedding_model,
         )
-        self.pdf_folder = pdf_folder
         self.embedding_model = embedding_model
         self.token_size = token_size
         self.cache = os.path.join(cache, "cache.csv")
@@ -236,17 +234,6 @@ class VectorStoreCreator(Gemini):
             logging.error(f"Error deleting UUIDs from vectorstore: {e}")
         logging.info("Saving vectorstore after deletions...")
         self.vectorstore.save_local(self.vectorstore_path)
-
-    def _find_pdf(self):
-        logging.info("Searching for supported document files...")
-        self.pdf_paths = []
-        for root, _loop, files in os.walk(self.pdf_folder):
-            for f in files:
-                if not any(
-                    f.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS
-                ):
-                    continue
-                self.pdf_paths.append(os.path.join(root, f))
 
     def _chunk_txt(self, file_path):
         filename = os.path.basename(file_path)
@@ -531,16 +518,6 @@ class VectorStoreCreator(Gemini):
             ids=self.ids_for_vectorstore,
         )
         self.vectorstore.save_local(self.vectorstore_path)
-
-    def build_vectorstore_from_zero(self):
-        logging.info("Bulding vectorstore from zero...")
-        if self._check_chache() or self._check_vectorstore_exists():
-            raise VectorAlreadyCreatedError()
-        self._find_pdf()
-        self._start_chunking_process()
-        self._processing_faiss_vectorstore_data()
-        self._save_faiss_vectorstore()
-        self._save_cache()
 
     def add_from_folder(self):
         logging.info("Building or adding new PDFs to vectorstore...")

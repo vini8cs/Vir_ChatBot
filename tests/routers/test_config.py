@@ -36,7 +36,7 @@ class TestGetConfig:
     def test_response_contains_expected_keys(self, client):
         data = client.get("/config").json()
         assert "temperature" in data
-        assert "gemini_model" in data
+        assert "llm_model" in data
         assert "max_retries" in data
 
     def test_reflects_current_state(self, client):

@@ -10,23 +10,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-os.environ.setdefault("GEMINI_API_KEY", "fake-test-key")
-os.environ.setdefault("GCP_CREDENTIALS", "/dev/null")
-os.environ.setdefault("GCP_PROJECT", "fake-test-project")
-os.environ.setdefault("GCP_REGION", "us-central1")
+os.environ.setdefault("GEMINI_API_KEY", "fake-gemini-key")
+os.environ.setdefault("ANTHROPIC_API_KEY", "fake-anthropic-key")
+os.environ.setdefault("LLM_PROVIDER", "gemini")
 
-# Stub google-genai so config.py's `genai.Client()` never hits the network.
-_mock_genai = MagicMock()
-sys.modules["google.genai"] = _mock_genai
-sys.modules["google.genai.types"] = MagicMock()
-if "google" in sys.modules:
-    sys.modules["google"].genai = _mock_genai
-
-# Stub LangChain Google packages to avoid deep google-sdk import chains.
-# llms/gemini.py imports these at module level; we never need the real
-# classes in unit tests (they are only instantiated, not type-checked).
+# Stub LangChain provider packages to avoid deep sdk import chains.
+# These are imported at module level; we never need the real classes in
+# unit tests (they are only instantiated, not type-checked).
 sys.modules["langchain_google_genai"] = MagicMock()
-sys.modules["langchain_google_vertexai"] = MagicMock()
+sys.modules["langchain_anthropic"] = MagicMock()
 
 
 @pytest.fixture()

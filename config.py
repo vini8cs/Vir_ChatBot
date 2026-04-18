@@ -2,7 +2,6 @@ import logging
 import os
 import warnings
 
-from google import genai
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logging.basicConfig(
@@ -12,24 +11,16 @@ logging.basicConfig(
 )
 
 warnings.filterwarnings(
-    "ignore", category=FutureWarning, module="google.cloud.aiplatform"
-)
-warnings.filterwarnings(
     "ignore", category=DeprecationWarning, module="unstructured"
 )
-
-
-class GeminiConnectionError(ConnectionError):
-    """Custom exception for Gemini client connection errors."""
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    GEMINI_API_KEY: str
-    GCP_CREDENTIALS: str
-    GCP_PROJECT: str
-    GCP_REGION: str
+    LLM_PROVIDER: str = "gemini"
+    GEMINI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
 
     LANGSMITH_API_KEY: str = ""
     LANGSMITH_TRACING_V2: str = "true"
@@ -37,7 +28,6 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = ""
 
     UNSTRUCTURED_API: str = ""
-    PDF_FOLDER: str = "PDFs"
     VECTORSTORE_PATH: str = "vectorstore"
     SQLITE_MEMORY_DATABASE: str = "memory.sqlite"
     CACHE_FOLDER_PATH: str = "cache.csv"
@@ -51,11 +41,14 @@ class Settings(BaseSettings):
 
 settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
 
-os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
-os.environ["GOOGLE_API_KEY"] = settings.GEMINI_API_KEY
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.GCP_CREDENTIALS
-os.environ["GOOGLE_CLOUD_PROJECT"] = settings.GCP_PROJECT
-os.environ["GOOGLE_CLOUD_REGION"] = settings.GCP_REGION
+LLM_PROVIDER = settings.LLM_PROVIDER
+
+if settings.GEMINI_API_KEY:
+    os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+    os.environ["GOOGLE_API_KEY"] = settings.GEMINI_API_KEY
+
+if settings.ANTHROPIC_API_KEY:
+    os.environ["ANTHROPIC_API_KEY"] = settings.ANTHROPIC_API_KEY
 
 if settings.LANGSMITH_API_KEY != "" and settings.LANGSMITH_PROJECT != "":
     os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
@@ -63,15 +56,10 @@ if settings.LANGSMITH_API_KEY != "" and settings.LANGSMITH_PROJECT != "":
     os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
     os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
 
-try:
-    logging.info("Initializing Gemini client...")
-    CLIENT_GEMINI = genai.Client()
-except Exception as e:
-    raise GeminiConnectionError(
-        f"Error initializing Gemini client: {e}"
-    ) from e
-
 GEMINI_MODEL = "gemini-2.5-flash"
+ANTHROPIC_MODEL = "claude-sonnet-4-6"
+LLM_MODEL = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else GEMINI_MODEL
+
 EMBEDDING_MODEL = "gemini-embedding-001"
 TEMPERATURE = 0.1
 MAX_OUTPUT_TOKENS = 2048
@@ -86,7 +74,6 @@ RUNTIME_CONFIG_PATH = os.path.join(
 )
 VECTORSTORE_PATH = settings.VECTORSTORE_PATH
 CACHE_FOLDER = settings.CACHE_FOLDER_PATH
-PDF_FOLDER = settings.PDF_FOLDER
 API_BASE_URL = settings.API_BASE_URL
 RETRIEVER_LIMIT = 5
 THREAD_NUMBER = 1
