@@ -14,8 +14,11 @@ A RAG (Retrieval-Augmented Generation) chatbot specialized in **virology** and *
 - **Docker** and **Docker Compose** (recommended)
 - **Python 3.12+** (for local development)
 - **[uv](https://docs.astral.sh/uv/)** - Fast Python package manager (for local development)
-- **Google Cloud Account** with access to Gemini/Vertex AI API
-- **GCP Credentials** (service account JSON file)
+- An API key from **one** of the supported LLM providers:
+  - **Google Gemini** API key (`GEMINI_API_KEY`) — default provider, also used for embeddings and summarization
+  - **Anthropic** API key (`ANTHROPIC_API_KEY`) — optional, can be selected as the chat LLM via `LLM_PROVIDER=anthropic`
+
+> ⚠️ Even when using Anthropic as the chat provider, a `GEMINI_API_KEY` is still required because embeddings and the optional PDF summarization step always run on Gemini.
 
 ---
 
@@ -110,10 +113,10 @@ cd frontend && uv run streamlit run app.py
 ## 🏗️ Architecture
 
 ```
-┌────────────┐      ┌────────────┐      ┌────────────┐      ┌────────────┐
-│  Streamlit │ ───► │  FastAPI   │ ───► │  LangGraph │ ───► │   Gemini   │
-│     UI     │      │  Backend   │      │   Agent    │      │    API     │
-└────────────┘      └─────┬──────┘      └─────┬──────┘      └────────────┘
+┌────────────┐      ┌────────────┐      ┌────────────┐      ┌─────────────────┐
+│  Streamlit │ ───► │  FastAPI   │ ───► │  LangGraph │ ───► │ Gemini /        │
+│     UI     │      │  Backend   │      │   Agent    │      │ Anthropic  API  │
+└────────────┘      └─────┬──────┘      └─────┬──────┘      └─────────────────┘
     :8501                 │                   │
                          │                   ▼
                          │            ┌────────────┐
@@ -135,7 +138,7 @@ cd frontend && uv run streamlit run app.py
 3. **Embeddings**: Google Gemini generates embeddings for each chunk
 4. **Storage**: Chunks are indexed in FAISS for vector search
 5. **Query**: User questions retrieve relevant chunks via similarity search
-6. **Response**: The LLM (Gemini) generates responses based on retrieved context
+6. **Response**: The chat LLM (Gemini by default, or Anthropic when `LLM_PROVIDER=anthropic`) generates responses based on retrieved context
 
 ---
 
@@ -190,14 +193,18 @@ cd frontend && uv run streamlit run app.py
 Create a `.env` file in the project root with the following variables:
 
 ```env
-# Google Cloud / Gemini (Required)
+# LLM provider selection (Optional - defaults to "gemini")
+# Options: "gemini" or "anthropic"
+LLM_PROVIDER="gemini"
+
+# Gemini (Required - used for embeddings and optional summarization,
+# and as the chat LLM when LLM_PROVIDER=gemini)
 GEMINI_API_KEY="your_gemini_api_key"
-GCP_CREDENTIALS="/path/to/your/credentials.json"
-GCP_PROJECT="your_gcp_project_id"
-GCP_REGION="us-central1"
+
+# Anthropic (Required only when LLM_PROVIDER=anthropic)
+ANTHROPIC_API_KEY="your_anthropic_api_key"
 
 # Paths (adjust as needed)
-PDF_FOLDER="/path/to/your/pdfs_folder_path"
 VECTORSTORE_PATH="/path/to/vectorstore_folder_path"
 CACHE_FOLDER_PATH="/path/to/cache_folder_path"
 SQLITE_DB_DIR="/path/to/db_folder"
@@ -214,25 +221,23 @@ REDIS_COMMANDER_PORT=8081
 API_BASE_URL="http://localhost:8000"  # Must match WEB_PORT
 
 # Container user permissions (Optional - defaults to 1000)
-PUID=1000
-PGID=1000
+# PUID=1000
+# PGID=1000
 
 # LangSmith (Optional - for tracing/debugging)
-LANGSMITH_API_KEY="your_langsmith_key"
-LANGSMITH_TRACING_V2=true
-LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
-LANGSMITH_PROJECT="vir-chatbot"
+# LANGSMITH_API_KEY="your_langsmith_key"
+# LANGSMITH_TRACING_V2=true
+# LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+# LANGSMITH_PROJECT="vir-chatbot"
 ```
 
 ### Environment Variables Reference
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GEMINI_API_KEY` | ✅ | — | Your Google Gemini API key for LLM and embeddings |
-| `GCP_CREDENTIALS` | ✅ | — | Path to your GCP service account JSON file |
-| `GCP_PROJECT` | ✅ | — | Your Google Cloud project ID |
-| `GCP_REGION` | ✅ | — | GCP region (e.g., `us-central1`) |
-| `PDF_FOLDER` | ❌ | — | Host path to a folder with PDFs (for batch import) |
+| `LLM_PROVIDER` | ❌ | `gemini` | Chat LLM provider — `gemini` or `anthropic` |
+| `GEMINI_API_KEY` | ✅ | — | Google Gemini API key (always required — used for embeddings and summarization, and as the chat LLM when `LLM_PROVIDER=gemini`) |
+| `ANTHROPIC_API_KEY` | ⚠️ | — | Required only when `LLM_PROVIDER=anthropic` |
 | `VECTORSTORE_PATH` | ✅ | — | Host path where FAISS vectorstore will be saved |
 | `CACHE_FOLDER_PATH` | ✅ | — | Host path for caching processed documents |
 | `SQLITE_DB_DIR` | ✅ | — | Host directory for SQLite database (conversation memory) and runtime config |
@@ -248,9 +253,6 @@ LANGSMITH_PROJECT="vir-chatbot"
 | `LANGSMITH_ENDPOINT` | ❌ | — | LangSmith API endpoint |
 | `LANGSMITH_PROJECT` | ❌ | — | LangSmith project name |
 
-> **📝 Note about `PDF_FOLDER`:**  
-> This variable is **optional**. It's useful if you want to create the VectorStore from a pre-existing folder with PDFs. However, you can also upload PDFs directly through the web interface or select individual files — the `PDF_FOLDER` is not required for the application to work.
-
 > **📝 Note about `PUID` and `PGID`:**  
 > When using bind mounts, Docker preserves the host's numeric owner IDs (UID/GID). If the container user doesn't match, permission errors will occur. Set `PUID` and `PGID` to match your host user. Check your IDs with `id` command (e.g., `uid=1000(username) gid=1000(username)`).
 
@@ -260,7 +262,8 @@ The default model parameters are defined in [config.py](config.py):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `GEMINI_MODEL` | `gemini-2.5-flash` | LLM model for chat and summarization |
+| `LLM_MODEL` | `gemini-2.5-flash` (or `claude-sonnet-4-6` if `LLM_PROVIDER=anthropic`) | Chat LLM model — resolved from `LLM_PROVIDER` |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model used for PDF summarization (always Gemini, regardless of `LLM_PROVIDER`) |
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | Model for embeddings |
 | `TEMPERATURE` | `0.1` | Model creativity (0-1) |
 | `MAX_OUTPUT_TOKENS` | `2048` | Maximum output tokens |
@@ -292,8 +295,7 @@ After starting the services, access (using default ports):
 ### Interface Features
 
 1. **Create VectorStore** (in the sidebar under "📚 Manage VectorStore"):
-   - **Option 1 - Upload PDFs**: Select and upload individual PDF files directly through the interface
-   - **Option 2 - Create from Folder**: Use the pre-configured `PDF_FOLDER` path (if set in `.env`)
+   - **Upload PDFs**: Select and upload individual PDF files (or `.docx`, `.txt`, `.tsv`, images) directly through the interface — ingestion runs asynchronously on the Celery worker
    - **VectorStore Settings**: Configure the model, max tokens, and enable/disable summarization before creating
 
 2. **Chat with Documents**:
@@ -372,7 +374,7 @@ Vir_ChatBot/
 
 | Category | Technology |
 |----------|------------|
-| **LLM** | Google Gemini (2.5 Flash) |
+| **Chat LLM** | Google Gemini (2.5 Flash) or Anthropic Claude (Sonnet/Opus/Haiku) — selected via `LLM_PROVIDER` |
 | **Embeddings** | Google Gemini Embedding |
 | **Agent Framework** | LangGraph + LangChain |
 | **Vector Store** | FAISS |
