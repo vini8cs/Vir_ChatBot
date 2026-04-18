@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     UNSTRUCTURED_API: str = ""
     VECTORSTORE_PATH: str = "vectorstore"
-    SQLITE_MEMORY_DATABASE: str = "memory.sqlite"
+    SQLITE_DB_DIR: str = "db_data"
     CACHE_FOLDER_PATH: str = "cache.csv"
     API_BASE_URL: str = "http://localhost:8000"
 
@@ -68,9 +68,10 @@ MAX_RETRIES = 3
 TOKENIZER_MODEL = "mistralai/Mistral-7B-v0.1"
 THREADS = 4
 SUMMARIZE = False
-SQLITE_MEMORY_DATABASE = settings.SQLITE_MEMORY_DATABASE
+SQLITE_DB_DIR = settings.SQLITE_DB_DIR
+SQLITE_MEMORY_DATABASE = os.path.join(settings.SQLITE_DB_DIR, "memory.sqlite")
 RUNTIME_CONFIG_PATH = os.path.join(
-    os.path.dirname(settings.SQLITE_MEMORY_DATABASE), "runtime_config.json"
+    settings.SQLITE_DB_DIR, "runtime_config.json"
 )
 VECTORSTORE_PATH = settings.VECTORSTORE_PATH
 CACHE_FOLDER = settings.CACHE_FOLDER_PATH

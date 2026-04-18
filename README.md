@@ -200,7 +200,7 @@ GCP_REGION="us-central1"
 PDF_FOLDER="/path/to/your/pdfs_folder_path"
 VECTORSTORE_PATH="/path/to/vectorstore_folder_path"
 CACHE_FOLDER_PATH="/path/to/cache_folder_path"
-SQLITE_MEMORY_DATABASE="/path/to/sqlite_folder"
+SQLITE_DB_DIR="/path/to/db_folder"
 
 # Ports (Optional - defaults shown)
 WEB_PORT=8000
@@ -235,7 +235,7 @@ LANGSMITH_PROJECT="vir-chatbot"
 | `PDF_FOLDER` | ❌ | — | Host path to a folder with PDFs (for batch import) |
 | `VECTORSTORE_PATH` | ✅ | — | Host path where FAISS vectorstore will be saved |
 | `CACHE_FOLDER_PATH` | ✅ | — | Host path for caching processed documents |
-| `SQLITE_MEMORY_DATABASE` | ✅ | — | Host path for SQLite database (conversation memory) |
+| `SQLITE_DB_DIR` | ✅ | — | Host directory for SQLite database (conversation memory) and runtime config |
 | `WEB_PORT` | ❌ | `8000` | Port for FastAPI backend |
 | `REDIS_PORT` | ❌ | `6379` | Port for Redis |
 | `STREAMLIT_PORT` | ❌ | `8501` | Port for Streamlit UI |
