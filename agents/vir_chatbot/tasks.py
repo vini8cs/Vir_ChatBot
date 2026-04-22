@@ -8,7 +8,6 @@ from agents.vir_chatbot.vectorstore import (
     NoCacheFoundError,
     NoNewPDFError,
     NoVectorStoreFoundError,
-    VectorAlreadyCreatedError,
     VectorStoreCreator,
 )
 from config import settings
@@ -129,68 +128,6 @@ def create_vectorstore_uploaded_pdfs(
             if not os.path.isfile(file_temp):
                 continue
             os.remove(file_temp)
-
-
-@app.task(bind=True)
-def create_vectorstore_from_folder(
-    self,
-    summarize: bool = False,
-    gemini_model: str = "gemini-2.5-flash",
-):
-    total_steps = 6
-    logging.info(f"Summarize: {summarize}, Model: {gemini_model}")
-    try:
-        update_task_progress(
-            self,
-            1,
-            total_steps,
-            "Starting",
-            "Searching for PDFs in folder...",
-        )
-
-        vector_store_creator = VectorStoreCreator(
-            summarize=summarize,
-            gemini_model=gemini_model,
-        )
-        if (
-            vector_store_creator._check_chache()
-            or vector_store_creator._check_vectorstore_exists()
-        ):
-            raise VectorAlreadyCreatedError
-        vector_store_creator._find_pdf()
-
-        pdf_count = len(vector_store_creator.pdf_paths)
-        update_task_progress(
-            self,
-            2,
-            total_steps,
-            "Chunking",
-            f"Chunking {pdf_count} PDF(s) with Docling...",
-        )
-        vector_store_creator._start_chunking_process()
-
-        update_task_progress(
-            self, 3, total_steps, "VectorStore", "Creating VectorStore..."
-        )
-        vector_store_creator._processing_faiss_vectorstore_data()
-        vector_store_creator._save_faiss_vectorstore()
-
-        update_task_progress(
-            self, 4, total_steps, "Finishing", "Saving cache..."
-        )
-        vector_store_creator._save_cache()
-
-        return {
-            "status": "Success",
-            "message": "VectorStore created from scratch"
-            f" with {pdf_count} PDF(s).",
-            "current": total_steps,
-            "total": total_steps,
-            "percent": 100,
-        }
-    except VectorAlreadyCreatedError as e:
-        logging.info(f"Error in Celery task: {e}")
-        return {"status": "Failure", "error": str(e)}
 
 
 @app.task(bind=True)

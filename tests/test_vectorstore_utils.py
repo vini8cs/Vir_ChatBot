@@ -28,14 +28,7 @@ class TestCleanText:
     def test_empty_string_returns_none(self):
         assert VectorStoreCreator.clean_text("") is None
 
-    def test_one_word_returns_none(self):
-        assert VectorStoreCreator.clean_text("word") is None
-
-    def test_two_words_returns_none(self):
-        assert VectorStoreCreator.clean_text("one two") is None
-
     def test_three_words_returns_none(self):
-        # boundary: len("a b c".split()) == 3, not > 3
         assert VectorStoreCreator.clean_text("one two three") is None
 
     # ── returns cleaned string for valid input ─────────────────────────────

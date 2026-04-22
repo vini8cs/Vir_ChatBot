@@ -46,9 +46,12 @@ uv run pytest tests/test_models.py   # single file
 ```
 
 Rules:
-- Every new feature and every bug fix **must** include a corresponding test.
+- Every new function gets a unit test; every bug fix gets a regression test.
 - After any code change, run the full test suite and fix all failures before considering the task done.
 - Prefer testing real behaviour over mocks. Only mock at system boundaries (Gemini API, FAISS I/O) — never mock the module under test itself.
+- Mock external I/O with named fake classes, not inline stubs.
+- Tests must be F.I.R.S.T: fast, independent, repeatable, self-validating, timely.
+- Write only tests that protect real behaviour — not coverage padding. Target ~80%; don't chase 100%.
 - `tests/conftest.py` stubs `google.genai`, `langchain_google_genai`, and `langchain_google_vertexai` in `sys.modules`, and sets fake env vars so `config.py` can be imported without real credentials. Tests that need a writable config path use the `tmp_config_path` fixture.
 - Priority areas: `backend/models.py`, `backend/state.py`, `agents/vir_chatbot/vectorstore.py` (static methods), `llms/gemini.py` (static methods), `backend/routers/`.
 
@@ -94,8 +97,31 @@ A FAISS index must be queried with the exact same embedding model it was built w
 
 `_start_chunking_process` walks `pdf_paths`, dispatches `.txt` / `.tsv` to simple chunkers and everything else to Docling (`HybridChunker` over `DocumentConverter`). Results are cached in `CACHE_FOLDER/cache.csv` keyed by filename; `_diff_vs_cache` prevents re-ingesting PDFs already in the store, and `delete_pdfs()` uses the cached UUIDs to remove vectors from FAISS.
 
+## Implementation checklist
+
+Every non-trivial change must pass this checklist before being considered done:
+
+1. **Tests** — add/update tests; run `uv run pytest` and fix all failures.
+2. **Pre-commit** — run `uv run pre-commit run --all-files`; no commits with failures.
+3. **README** — update if a user-facing feature (endpoint, config key, env var, ingestion format) changed.
+4. **CLAUDE.md** — update if architecture, config layers, or any documented invariant changed.
+
 ## Conventions
 
 - **Line length 78**, enforced by the ruff pre-commit hook with rule set `E,W,F,I,B,C4,SIM`. Match it.
 - `import config as _` is the project-wide idiom for accessing config constants (e.g. `_.VECTORSTORE_PATH`). Follow it — this is a codebase convention, not a typo.
 - Paths in containers are hard-coded to `/app/vectorstore`, `/app/cache`, `/app/db_data` and bind-mounted from the host via `.env` values. The `entrypoint.sh` remaps the `appuser` UID/GID to `PUID`/`PGID` at container start so bind-mount permissions line up.
+
+### Comments
+
+- Keep existing comments on refactor — they carry intent and provenance.
+- Write WHY, not WHAT.
+
+### Code style
+
+- **Names**: specific and unique. Avoid `data`, `handler`, `Manager`. Prefer <5 grep hits.
+- **Files**: under 500 lines. Split by responsibility.
+- **SRP**: one thing per function, one responsibility per module.
+- **No duplication**: extract shared logic into a function or module.
+- **Types**: explicit everywhere. No `Any`, no bare `Dict`/`List`, no untyped signatures.
+- **Exception messages**: include the offending value and expected shape (e.g. `f"expected list[str], got {type(v)}: {v!r}"`).

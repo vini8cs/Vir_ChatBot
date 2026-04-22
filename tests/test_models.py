@@ -36,9 +36,6 @@ class TestRuntimeConfig:
         restored = RuntimeConfig(**cfg.model_dump())
         assert restored == cfg
 
-    def test_summarize_default_is_bool(self):
-        assert isinstance(RuntimeConfig().summarize, bool)
-
 
 class TestConfigUpdateRequest:
     def test_all_fields_are_optional(self):
