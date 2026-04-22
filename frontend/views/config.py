@@ -11,6 +11,14 @@ GEMINI_MODELS = [
     "gemini-2.5-pro",
 ]
 
+ANTHROPIC_MODELS = [
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+]
+
+ALL_MODELS = GEMINI_MODELS + ANTHROPIC_MODELS
+
 _CONFIG_WIDGET_KEYS = (
     "config_model",
     "config_temperature",
@@ -23,17 +31,15 @@ _CONFIG_WIDGET_KEYS = (
 
 
 def model_selection(
-    config=None, key="config_model", config_field="gemini_model"
+    config=None, key="config_model", config_field="llm_model"
 ):
     current_model = config.get(config_field, "gemini-2.5-flash")
     model_index = (
-        GEMINI_MODELS.index(current_model)
-        if current_model in GEMINI_MODELS
-        else 0
+        ALL_MODELS.index(current_model) if current_model in ALL_MODELS else 0
     )
     return st.selectbox(
-        "🧬 Gemini Model",
-        options=GEMINI_MODELS,
+        "🧬 LLM Model",
+        options=ALL_MODELS,
         index=model_index,
         key=key,
     )
@@ -179,7 +185,7 @@ async def run_llm_config():
             st.divider()
 
             config_changed = (
-                new_model != config.get("gemini_model")
+                new_model != config.get("llm_model")
                 or new_temperature != config.get("temperature")
                 or new_max_tokens != config.get("max_output_tokens")
                 or new_retriever_limit != config.get("retriever_limit")
@@ -188,7 +194,7 @@ async def run_llm_config():
             )
 
             updates = {
-                "gemini_model": new_model,
+                "llm_model": new_model,
                 "temperature": new_temperature,
                 "max_output_tokens": new_max_tokens,
                 "retriever_limit": new_retriever_limit,

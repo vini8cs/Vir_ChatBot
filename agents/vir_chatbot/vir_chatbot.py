@@ -3,6 +3,7 @@ import logging
 import os
 from functools import partial
 
+from langchain_anthropic import ChatAnthropic
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import (
     ChatGoogleGenerativeAI,
@@ -29,9 +30,18 @@ class Vir_ChatBot:
         self.retriever = retriever
         self.checkpointer = checkpointer
         self.system_prompt = system_prompt
-        self.llm = ChatGoogleGenerativeAI(
-            model=llm_model, temperature=temperature, max_retries=max_retries
-        )
+        if _.LLM_PROVIDER == "anthropic":
+            self.llm = ChatAnthropic(
+                model=llm_model,
+                temperature=temperature,
+                max_retries=max_retries,
+            )
+        else:
+            self.llm = ChatGoogleGenerativeAI(
+                model=llm_model,
+                temperature=temperature,
+                max_retries=max_retries,
+            )
         self.graph = None
 
     async def build_graph(self):

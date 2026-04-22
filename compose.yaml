@@ -8,8 +8,6 @@ services:
       - .env
     volumes:
       - ${VECTORSTORE_PATH}:/app/vectorstore/
-      - ${PDF_FOLDER}:/app/pdfs/
-      - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
       - temp_uploads:/tmp/temp_uploads
@@ -18,10 +16,8 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
-      - PDF_FOLDER=/app/pdfs/
-      - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
-      - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
+      - SQLITE_DB_DIR=/app/db_data
       - WEB_PORT=${WEB_PORT:-8000}
     command: uvicorn backend.api:app --host 0.0.0.0 --port ${WEB_PORT:-8000}
     healthcheck:
@@ -43,8 +39,6 @@ services:
       - .env
     volumes:
       - ${VECTORSTORE_PATH}:/app/vectorstore/
-      - ${PDF_FOLDER}:/app/pdfs/
-      - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
       - temp_uploads:/tmp/temp_uploads
@@ -53,17 +47,16 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
-      - PDF_FOLDER=/app/pdfs/
-      - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
-      - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
+      - SQLITE_DB_DIR=/app/db_data
       - REDIS_PORT=${REDIS_PORT:-6379}
+
   redis:
     image: redis:7
     ports:
       - "${REDIS_PORT:-6379}:${REDIS_PORT:-6379}"
     command: redis-server --port ${REDIS_PORT:-6379}
-  
+
   redis-commander:
     profiles:
       - dev
@@ -84,8 +77,6 @@ services:
       - .env
     volumes:
       - ${VECTORSTORE_PATH}:/app/vectorstore/
-      - ${PDF_FOLDER}:/app/pdfs/
-      - ${GCP_CREDENTIALS}:/app/gcp_credentials.json
       - ${CACHE_FOLDER_PATH}:/app/cache/
       - ${SQLITE_DB_DIR:-./db_data}:/app/db_data/
     environment:
@@ -93,10 +84,8 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - VECTORSTORE_PATH=/app/vectorstore/
-      - PDF_FOLDER=/app/pdfs/
-      - GCP_CREDENTIALS=/app/gcp_credentials.json
       - CACHE_FOLDER_PATH=/app/cache/
-      - SQLITE_MEMORY_DATABASE=/app/db_data/memory.sqlite
+      - SQLITE_DB_DIR=/app/db_data
       - API_BASE_URL=http://web:${WEB_PORT:-8000}
       - STREAMLIT_PORT=${STREAMLIT_PORT:-8501}
     command: streamlit run app.py --server.port=${STREAMLIT_PORT:-8501} --server.address=0.0.0.0

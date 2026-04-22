@@ -102,7 +102,7 @@ async def upload_pdf(
     task = create_vectorstore_uploaded_pdfs.delay(
         files_to_upload,
         summarize=state.runtime_config.summarize,
-        gemini_model=state.runtime_config.gemini_model,
+        gemini_model=_.GEMINI_MODEL,
     )
 
     return {

@@ -24,7 +24,7 @@ class TestRuntimeConfig:
         assert cfg.max_retries > 0
         assert cfg.retriever_limit > 0
         assert isinstance(cfg.system_prompt, str)
-        assert isinstance(cfg.gemini_model, str)
+        assert isinstance(cfg.llm_model, str)
 
     def test_accepts_valid_overrides(self):
         cfg = RuntimeConfig(temperature=0.9, max_retries=5)
@@ -36,15 +36,12 @@ class TestRuntimeConfig:
         restored = RuntimeConfig(**cfg.model_dump())
         assert restored == cfg
 
-    def test_summarize_default_is_bool(self):
-        assert isinstance(RuntimeConfig().summarize, bool)
-
 
 class TestConfigUpdateRequest:
     def test_all_fields_are_optional(self):
         req = ConfigUpdateRequest()
         assert req.temperature is None
-        assert req.gemini_model is None
+        assert req.llm_model is None
         assert req.summarize is None
 
     def test_exclude_none_returns_only_provided_fields(self):

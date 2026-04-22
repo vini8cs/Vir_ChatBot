@@ -36,7 +36,7 @@ class TestGetConfig:
     def test_response_contains_expected_keys(self, client):
         data = client.get("/config").json()
         assert "temperature" in data
-        assert "gemini_model" in data
+        assert "llm_model" in data
         assert "max_retries" in data
 
     def test_reflects_current_state(self, client):
@@ -86,3 +86,58 @@ class TestResetConfig:
 
     def test_response_status_is_success(self, client):
         assert client.post("/config/reset").json()["status"] == "success"
+
+
+class TestResetConfigAndReload:
+    @pytest.fixture()
+    def client_with_reload(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.state._save_persisted_config", lambda _cfg: None
+        )
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
+    def test_returns_200_when_vectorstore_loads(
+        self, client_with_reload, monkeypatch
+    ):
+        from unittest.mock import AsyncMock, MagicMock
+
+        fake_retriever = MagicMock()
+        monkeypatch.setattr(
+            "backend.routers.config.load_global_vectorstore",
+            AsyncMock(return_value=fake_retriever),
+        )
+        resp = client_with_reload.post("/config/reset-and-reload")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["vectorstore_loaded"] is True
+
+    def test_returns_partial_when_vectorstore_not_found(
+        self, client_with_reload, monkeypatch
+    ):
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setattr(
+            "backend.routers.config.load_global_vectorstore",
+            AsyncMock(return_value=None),
+        )
+        resp = client_with_reload.post("/config/reset-and-reload")
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["vectorstore_loaded"] is False
+
+    def test_returns_partial_on_reload_exception(
+        self, client_with_reload, monkeypatch
+    ):
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setattr(
+            "backend.routers.config.load_global_vectorstore",
+            AsyncMock(side_effect=RuntimeError("faiss error")),
+        )
+        resp = client_with_reload.post("/config/reset-and-reload")
+        data = resp.json()
+        assert data["status"] == "partial"
+        assert "faiss error" in data["error"]

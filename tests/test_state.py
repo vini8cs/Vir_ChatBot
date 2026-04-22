@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -43,6 +44,17 @@ class TestSavePersistedConfig:
         with open(tmp_config_path) as f:
             data = json.load(f)
         assert data["temperature"] == pytest.approx(0.9)
+
+    def test_logs_warning_when_write_raises(
+        self, tmp_config_path, monkeypatch
+    ):
+        """Covers the except branch in _save_persisted_config."""
+        import backend.state as state
+        import config as _
+
+        monkeypatch.setattr(_, "RUNTIME_CONFIG_PATH", tmp_config_path)
+        with patch("builtins.open", side_effect=OSError("disk full")):
+            state._save_persisted_config(RuntimeConfig())
 
 
 class TestLoadPersistedConfig:

@@ -9,7 +9,7 @@ import config as _
 class RuntimeConfig(BaseModel):
     """Runtime configuration that can be modified via API."""
 
-    gemini_model: str = _.GEMINI_MODEL
+    llm_model: str = _.LLM_MODEL
     temperature: float = _.TEMPERATURE
     max_output_tokens: int = _.MAX_OUTPUT_TOKENS
     max_retries: int = _.MAX_RETRIES
@@ -25,7 +25,7 @@ class RuntimeConfig(BaseModel):
 class ConfigUpdateRequest(BaseModel):
     """Request model for updating configuration."""
 
-    gemini_model: str | None = None
+    llm_model: str | None = None
     temperature: float | None = None
     max_output_tokens: int | None = None
     max_retries: int | None = None
